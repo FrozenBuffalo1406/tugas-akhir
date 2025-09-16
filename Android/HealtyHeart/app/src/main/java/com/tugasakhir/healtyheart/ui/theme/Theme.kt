@@ -56,3 +56,5 @@ fun HealtyHeartTheme(
         content = content
     )
 }
+
+annotation class EcgAppTheme

@@ -11,6 +11,7 @@ FilterButterworth::FilterButterworth(const double* b_coeffs, const double* a_coe
     memcpy(_b, b_coeffs, (_order + 1) * sizeof(double));
     memcpy(_a, a_coeffs, (_order + 1) * sizeof(double));
 
+    // Perbaikan: Panggil reset() di akhir konstruktor
     reset();
 }
 
@@ -34,7 +35,13 @@ float FilterButterworth::filter(float input) {
     for (int i = 1; i <= _order; ++i) {
         output -= _a[i] * _y[i];
     }
-    output /= _a[0];
+    
+    // Perbaikan: Tambahkan pemeriksaan untuk menghindari pembagian dengan nol
+    if (_a[0] != 0.0) {
+        output /= _a[0];
+    } else {
+        output = 0.0; // Atau kembalikan nilai default yang aman jika a[0] adalah nol
+    }
 
     for (int i = _order; i > 0; --i) {
         _y[i] = _y[i - 1];

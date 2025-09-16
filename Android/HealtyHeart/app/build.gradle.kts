@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.tugasakhir.healtyheart"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.tugasakhir.healtyheart"
@@ -32,7 +32,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = JavaVersion.VERSION_11.toString()
     }
     buildFeatures {
         compose = true
@@ -41,6 +41,7 @@ android {
 
 dependencies {
 
+    implementation(libs.firebase.crashlytics.buildtools)
     val composeBom = platform("androidx.compose:compose-bom:2025.05.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
@@ -53,7 +54,9 @@ dependencies {
     implementation(libs.androidx.material.icons.core)
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.adaptive)
-
+    implementation(libs.androidx.compose.bom)
+    implementation ("com.squareup.retrofit2:retrofit:2.3.0")
+    implementation ("com.squareup.retrofit2:converter-gson:2.3.0")
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.runtime.livedata)
