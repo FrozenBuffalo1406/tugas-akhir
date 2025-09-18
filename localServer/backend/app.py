@@ -1,91 +1,180 @@
+import os
+import sys
+import numpy as np
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-import random # Kita pakai ini untuk simulasi output model
 from tensorflow import keras
-import numpy as np
+
 
 app = Flask(__name__)
 CORS(app)
 
-print("Memuat model Denoising...")
-denoising_model = keras.models.load_model('model/model_denoising.h5') 
-print("Memuat model Klasifikasi...")
-classification_model = keras.models.load_model('model/model_klasifikasi_aritmia.h5')
+# --- Variabel Global untuk Model ---
+# Kita set `None` dulu, nanti diisi di fungsi `load_all_models`
+denoiser_model = None
+classification_model = None
 
+# --- Path ke File Model ---
+# Pastikan file-file ini ada di dalam folder 'backend/' lo
+DENOISER_MODEL_PATH = 'model/denoise_model_.h5'
+CLASSIFICATION_MODEL_PATH = 'model/classification_model.h5' # Ganti dengan nama file model klasifikasi lo
 
-# ----------------- FUNGSI MODEL (PLACEHOLDER) -----------------
-
-def denoise_ecg_with_model(raw_ecg_data):
+def load_all_models():
     """
-    FUNGSI ASLI untuk proses denoising.
+    Fungsi untuk me-load semua model ke memori saat server start.
     """
-    # 1. Ubah data input ke format yang diterima model (misal: numpy array dengan shape tertentu)
-    input_data = np.array(raw_ecg_data).reshape(1, -1, 1) # Contoh reshape
+    global denoiser_model, classification_model
     
-    # 2. Jalankan prediksi untuk denoising
-    denoised_data = denoising_model.predict(input_data)
+    print("="*50)
+    print("Memuat model ke memori...")
     
-    # 3. Kembalikan data bersih (mungkin perlu di-flatten lagi)
-    return denoised_data.flatten().tolist()
+    try:
+        if os.path.exists(DENOISER_MODEL_PATH):
+            denoiser_model = keras.models.load_model(DENOISER_MODEL_PATH)
+            print(f"✅ Model Denoising ('{DENOISER_MODEL_PATH}') berhasil dimuat.")
+        else:
+            raise FileNotFoundError(f"File model denoising tidak ditemukan di '{DENOISER_MODEL_PATH}'")
 
-def detect_arrhythmia_with_model(denoised_ecg_data):
-    """
-    FUNGSI ASLI untuk klasifikasi aritmia.
-    """
-    classes = ["Normal", "Atrial Fibrillation (AF)", "Premature Ventricular Contractions (PVC)", "Other"]
-    
-    # 1. Siapkan data untuk model klasifikasi
-    input_data = np.array(denoised_ecg_data).reshape(1, -1, 1) # Contoh reshape
-    
-    # 2. Dapatkan hasil prediksi (biasanya berupa array probabilitas)
-    predictions = classification_model.predict(input_data)[0]
-    
-    # 3. Cari indeks dengan probabilitas tertinggi dan cocokkan dengan nama kelas
-    predicted_index = np.argmax(predictions)
-    prediction_result = classes[predicted_index]
-    
-    return prediction_result
+        if os.path.exists(CLASSIFICATION_MODEL_PATH):
+            classification_model = keras.models.load_model(CLASSIFICATION_MODEL_PATH)
+            print(f"✅ Model Klasifikasi ('{CLASSIFICATION_MODEL_PATH}') berhasil dimuat.")
+        else:
+            raise FileNotFoundError(f"File model klasifikasi tidak ditemukan di '{CLASSIFICATION_MODEL_PATH}'")
+            
+    except Exception as e:
+        print(f"❌ FATAL ERROR: Gagal memuat model. Error: {e}")
+        print("Server akan berhenti. Pastikan path model sudah benar dan file tidak rusak.")
+        sys.exit(1) # Hentikan aplikasi jika model gagal di-load
+        
+    print("="*50)
 
-# ----------------- ROUTE API -----------------
+# =============================================================================
+# 2. FUNGSI UTILITY & PREPROCESSING
+# =============================================================================
+
+def preprocess_input(data: list, target_length: int) -> np.ndarray:
+    """
+    Menyiapkan data mentah dari request agar siap digunakan oleh model.
+    """
+    # Konversi ke numpy array
+    arr = np.array(data, dtype=np.float32)
+
+    # Padding atau trimming agar panjangnya sesuai
+    if len(arr) < target_length:
+        padding = np.zeros(target_length - len(arr))
+        arr = np.concatenate([arr, padding])
+    elif len(arr) > target_length:
+        arr = arr[:target_length]
+    
+    # Normalisasi (sama seperti saat training)
+    mean = np.mean(arr)
+    std = np.std(arr)
+    if std == 0: std = 1
+    normalized_arr = (arr - mean) / std
+
+    # Reshape untuk input model (batch_size, steps, channels)
+    return normalized_arr.reshape(1, target_length, 1), mean, std
+
+# =============================================================================
+# 3. ROUTE API
+# =============================================================================
 
 @app.route("/")
 def index():
-    return jsonify({"message": "Server Analisis ECG berjalan!"})
+    return jsonify({"message": "Server Analisis ECG berjalan!", "models_loaded": True})
 
 @app.route('/api/analyze-ecg', methods=['POST'])
 def analyze_ecg():
-    # ... (kode ambil data) ...
+    # --- Validasi Awal ---
     if not request.is_json:
-        return jsonify({"error": "Request harus dalam format JSON dengan header Content-Type application/json"}), 415
-
-    data = request.get_json() # Lebih baik pakai get_json()
-
-    # 2. Setelah aman, baru cek apakah kuncinya ada
-    if not data or 'ecg_data' not in data:
-        return jsonify({"error": "Kunci 'ecg_data' tidak ditemukan dalam body request"}), 400
+        return jsonify({"error": "Request harus dalam format JSON"}), 415
     
-    # Jika semua pengecekan lolos, baru proses datanya
-    raw_data = data['ecg_data']
+    data = request.get_json()
+    if not data or 'ecg_data' not in data:
+        return jsonify({"error": "Kunci 'ecg_data' tidak ditemukan"}), 400
+    
+    raw_ecg = data['ecg_data']
+    if not isinstance(raw_ecg, list) or len(raw_ecg) < 100:
+        return jsonify({"error": "Data ECG harus berupa list dengan minimal 100 data point"}), 400
 
-    # Validasi 1: Cek apakah datanya kosong
-    if not raw_data:
-        return jsonify({"error": "Data ECG tidak boleh kosong"}), 400
+    try:
+        # Mulai hitung waktu total
+        start_time_total = time.time()
+        
+        # =====================================================================
+        # TAHAP 1: PREPROCESSING & DENOISING
+        # =====================================================================
+        print("1. Memulai proses denoising...")
+        start_time_denoise = time.time()
 
-    # Validasi 2: Cek apakah semua item di dalamnya adalah angka
-    if not all(isinstance(i, (int, float)) for i in raw_data):
-        return jsonify({"error": "Semua data ECG harus berupa angka"}), 400
+        # Preprocess data untuk model denoiser (panjang input 1024)
+        denoiser_input, mean, std = preprocess_input(raw_ecg, 1024)
+        
+        # Prediksi sinyal bersih
+        denoised_signal_normalized = denoiser_model.predict(denoiser_input).flatten()
+        
+        # Denormalisasi untuk mendapatkan sinyal asli kembali
+        denoised_signal = (denoised_signal_normalized * std) + mean
+        
+        end_time_denoise = time.time()
+        duration_denoise = (end_time_denoise - start_time_denoise) * 1000 # dalam milidetik
 
-    # Validasi 3: Cek apakah panjang data masuk akal (misal: minimal 100 data point)
-    if len(raw_data) < 100:
-        return jsonify({"error": f"Data terlalu pendek ({len(raw_data)} points), minimal 100 points"}), 400
+        # =====================================================================
+        # TAHAP 2: DETEKSI ARITMIA
+        # =====================================================================
+        print("2. Memulai proses klasifikasi...")
+        start_time_classify = time.time()
 
-    # Proses denoising dan klasifikasi jika lolos validasi
-    denoised = denoise_ecg_with_model(raw_data)
-    result = detect_arrhythmia_with_model(denoised)
-    return jsonify({
-        "denoised_ecg": denoised,
-        "classification": result
-    }), 200
+        # Preprocess sinyal yang SUDAH BERSIH untuk model klasifikasi (misal panjang input 1000)
+        # Kita gunakan denoised_signal.tolist() sebagai input
+        classifier_input, _, _ = preprocess_input(denoised_signal.tolist(), 1000)
+        
+        # Prediksi kelas aritmia
+        prediction_probabilities = classification_model.predict(classifier_input)[0]
+        
+        # Ambil kelas dengan probabilitas tertinggi
+        predicted_index = np.argmax(prediction_probabilities)
+        arrhythmia_classes = ['Normal', 'AF', 'PVC', 'Other'] # Sesuaikan dengan kelas model lo
+        prediction_result = arrhythmia_classes[predicted_index]
+        
+        end_time_classify = time.time()
+        duration_classify = (end_time_classify - start_time_classify) * 1000 # dalam milidetik
+
+        # =====================================================================
+        # TAHAP 3: PERSIAPAN & PENGIRIMAN RESPON
+        # =====================================================================
+        end_time_total = time.time()
+        duration_total = (end_time_total - start_time_total) * 1000 # dalam milidetik
+        
+        print(f"3. Hasil Prediksi: {prediction_result}")
+        print(f"   - Durasi Denoising: {duration_denoise:.2f} ms")
+        print(f"   - Durasi Klasifikasi: {duration_classify:.2f} ms")
+        print(f"   - Durasi Total: {duration_total:.2f} ms")
+
+        # Kirim respons lengkap ke frontend
+        return jsonify({
+            "prediction": prediction_result,
+            "denoised_data": denoised_signal.tolist(),
+            "probabilities": prediction_probabilities.tolist(),
+            "status": "success",
+            "processing_time_ms": {
+                "denoising": round(duration_denoise, 2),
+                "classification": round(duration_classify, 2),
+                "total": round(duration_total, 2)
+            }
+        })
+
+    except Exception as e:
+        print(f"ERROR saat prediksi: {e}")
+        return jsonify({"error": "Terjadi kesalahan internal saat memproses data ECG."}), 500
+
+
+# =============================================================================
+# 4. JALANKAN APLIKASI
+# =============================================================================
 
 if __name__ == '__main__':
+    # Load semua model terlebih dahulu sebelum server menerima request
+    load_all_models()
+    # Jalankan server Flask
     app.run(debug=True, port=5000)
