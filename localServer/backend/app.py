@@ -16,7 +16,6 @@ classification_model = None
 
 # --- Path ke File Model ---
 # Pastikan file-file ini ada di dalam folder 'backend/' lo
-DENOISER_MODEL_PATH = 'model/denoise_model_.h5'
 CLASSIFICATION_MODEL_PATH = 'model/classification_model.h5' # Ganti dengan nama file model klasifikasi lo
 
 def load_all_models():

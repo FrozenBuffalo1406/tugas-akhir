@@ -35,6 +35,14 @@ void setupBLE(BLEServer* &pServer, BLECharacteristic* &pCharacteristic) {
   Serial.println("[BLE] Menunggu koneksi dari client (HP)...");
 }
 
+bool isSignalValid(int loPlusPin, int loMinusPin) {
+  // Sinyal dianggap valid jika KEDUA pin LO+ dan LO- berada dalam kondisi LOW
+  if (digitalRead(loPlusPin) == HIGH || digitalRead(loMinusPin) == HIGH) {
+    return false; // Ada elektroda yang terlepas
+  }
+  return true; // Semua elektroda terpasang
+}
+
 float readAndFilterECG(ButterworthFilter &filter, int pin) {
   float rawValue = analogRead(pin);
   return filter.update(rawValue);

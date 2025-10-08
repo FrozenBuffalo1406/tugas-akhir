@@ -14,6 +14,8 @@ float readAndFilterECG(ButterworthFilter &filter, int pin);
 
 void sendDataToServer(const char* url, const char* deviceId, const char* timestamp, float* buffer, int length);
 
+bool isSignalValid(int loPlusPin, int loMinusPin);
+
 String getTimestamp();
 
 #endif
