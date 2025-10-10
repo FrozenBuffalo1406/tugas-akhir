@@ -1,114 +1,122 @@
 #include "utils.h"
+#include "config.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include <BLEServer.h>
+#include <BLEDevice.h>
 #include <BLE2902.h>
 #include "time.h"
 
-// UUID dan Class Callback tetap di sini karena sangat spesifik untuk implementasi BLE ini
-#define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
-#define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+void setupOperationalBLE(BLEServer*& pServer, BLECharacteristic*& pCharacteristic, BLEServerCallbacks* callbacks) {
+  String mac = WiFi.macAddress();
+  String macSuffix = mac.substring(12);
+  macSuffix.replace(":", "");
+  String deviceName = "ECG_Monitor_" + macSuffix;
 
-// Variabel deviceConnected dan class callback bisa dideklarasikan di sini
-// dan diakses oleh fungsi di file ini.
-extern bool deviceConnected; // Gunakan 'extern' untuk memberitahu bahwa variabel ini ada di file lain
-class MyServerCallbacks: public BLEServerCallbacks {
-    void onConnect(BLEServer* pServer) { deviceConnected = true; Serial.println("[BLE] Perangkat terhubung"); }
-    void onDisconnect(BLEServer* pServer) { deviceConnected = false; Serial.println("[BLE] Perangkat terputus"); pServer->getAdvertising()->start(); }
-};
-
-
-void setupBLE(BLEServer* &pServer, BLECharacteristic* &pCharacteristic) {
-  Serial.println("Inisialisasi BLE...");
-  BLEDevice::init("ESP32_ECG_Monitor_TA");
+  BLEDevice::init(deviceName.c_str());
   pServer = BLEDevice::createServer();
-  pServer->setCallbacks(new MyServerCallbacks());
-  BLEService *pService = pServer->createService(SERVICE_UUID);
+  pServer->setCallbacks(callbacks);
+  BLEService* pService = pServer->createService(OP_SERVICE_UUID);
   pCharacteristic = pService->createCharacteristic(
-                      CHARACTERISTIC_UUID,
-                      BLECharacteristic::PROPERTY_NOTIFY
-                    );
+    ECG_CHARACTERISTIC_UUID,
+    BLECharacteristic::PROPERTY_NOTIFY);
   pCharacteristic->addDescriptor(new BLE2902());
   pService->start();
+  BLEDevice::getAdvertising()->addServiceUUID(OP_SERVICE_UUID);
   BLEDevice::startAdvertising();
-  Serial.println("[BLE] Menunggu koneksi dari client (HP)...");
+  Serial.println("[BLE] Mode Operasional Aktif. Menunggu koneksi...");
+}
+
+void startBleProvisioning(BLEServer*& pServer, BLECharacteristicCallbacks* idCallbacks) {
+  String mac = WiFi.macAddress();
+  String macSuffix = mac.substring(12);
+  macSuffix.replace(":", "");
+  String deviceName = "PROV_" + macSuffix;
+
+  BLEDevice::init(deviceName.c_str());
+  pServer = BLEDevice::createServer();
+  BLEService* pProvService = pServer->createService(PROV_SERVICE_UUID);
+  BLECharacteristic* pMacCharacteristic = pProvService->createCharacteristic(MAC_CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_READ);
+  pMacCharacteristic->setValue(mac.c_str());
+  BLECharacteristic* pIdCharacteristic = pProvService->createCharacteristic(ID_CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_WRITE);
+  pIdCharacteristic->setCallbacks(idCallbacks);
+  pProvService->start();
+  BLEDevice::getAdvertising()->addServiceUUID(PROV_SERVICE_UUID);
+  BLEDevice::startAdvertising();
+  Serial.println("[BLE] Mode Provisioning Aktif. Menunggu koneksi dari HP...");
+}
+
+bool provisionViaWifi(const char* registerUrl) {
+  String mac = WiFi.macAddress();
+  JsonDocument doc;
+  doc["mac_address"] = mac.c_str();
+  String payload;
+  serializeJson(doc, payload);
+  HTTPClient http;
+  http.begin(registerUrl);
+  http.addHeader("Content-Type", "application/json");
+  int httpCode = http.POST(payload);
+  if (httpCode == 200) {
+    String response = http.getString();
+    deserializeJson(doc, response);
+    if (!doc["device_id"].isNull()) {
+      http.end();
+      return true;
+    }
+  }
+  http.end();
+  return false;
 }
 
 bool isSignalValid(int loPlusPin, int loMinusPin) {
-  // Sinyal dianggap valid jika KEDUA pin LO+ dan LO- berada dalam kondisi LOW
-  if (digitalRead(loPlusPin) == HIGH || digitalRead(loMinusPin) == HIGH) {
-    return false; // Ada elektroda yang terlepas
-  }
-  return true; // Semua elektroda terpasang
-}
-
-float readAndFilterECG(ButterworthFilter &filter, int pin) {
-  float rawValue = analogRead(pin);
-  return filter.update(rawValue);
-}
-
-// Ganti seluruh fungsi lama dengan yang ini
-void sendDataToServer(const char* url, const char* deviceId, const char* timestamp, float* buffer, int length) {
-  // Hanya kirim jika WiFi terhubung
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\n[WIFI] Buffer penuh. Mengirim data ke server...");
-
-    // Menggunakan ArduinoJson v7 (tidak perlu hitung kapasitas)
-    JsonDocument doc;
-
-    // Menambahkan semua data ke dokumen JSON
-    doc["device_id"] = deviceId;
-    doc["timestamp"] = timestamp;
-    JsonArray ecgData = doc.createNestedArray("ecg_data");
-    for (int i = 0; i < length; i++) {
-      ecgData.add(buffer[i]);
-    }
-    
-    // Mengubah dokumen JSON menjadi string
-    String jsonString;
-    serializeJson(doc, jsonString);
-
-    // Proses pengiriman via HTTP POST
-    HTTPClient http;
-    http.begin(url);
-    http.addHeader("Content-Type", "application/json");
-    int httpResponseCode = http.POST(jsonString);
-
-    if (httpResponseCode > 0) {
-      String response = http.getString();
-      Serial.print("[WIFI-SERVER] Balasan: ");
-      Serial.println(response);
-    } else {
-      Serial.print("[WIFI-ERROR] Gagal mengirim data. Kode Error: ");
-      Serial.println(httpResponseCode);
-    }
-    http.end();
-    
-  } else {
-    Serial.println("[WIFI-ERROR] Koneksi Wi-Fi terputus.");
-  }
+  return (digitalRead(loPlusPin) == LOW && digitalRead(loMinusPin) == LOW);
 }
 
 String getTimestamp() {
   time_t now;
   struct tm timeinfo;
-  
   time(&now);
   gmtime_r(&now, &timeinfo);
-  
   if (timeinfo.tm_year < 124) {
-    Serial.println("Waktu belum tersinkronisasi dengan benar");
     return "0000-00-00T00:00:00+00:00";
   }
-
   const long wibOffset = 7 * 3600;
   time_t wibTime = now + wibOffset;
   gmtime_r(&wibTime, &timeinfo);
-
   char timeString[30];
-  
   strftime(timeString, sizeof(timeString), "%Y-%m-%dT%H:%M:%S+07:00", &timeinfo);
-  
   return String(timeString);
+}
+
+void sendDataToServer(const char* url, const char* deviceId, const char* timestamp, float* beatBuffer, float* afibBuffer, int length) {
+  if (WiFi.status() == WL_CONNECTED) {
+    JsonDocument doc;
+    doc["device_id"] = deviceId;
+    doc["timestamp"] = timestamp;
+    JsonArray ecgBeatData = doc["ecg_beat_data"].to<JsonArray>();
+    for (int i = 0; i < length; i++) {
+      ecgBeatData.add(beatBuffer[i]);
+    }
+    JsonArray ecgAfibData = doc["ecg_afib_data"].to<JsonArray>();
+    for (int i = 0; i < length; i++) {
+      ecgAfibData.add(afibBuffer[i]);
+    }
+    String jsonString;
+    serializeJson(doc, jsonString);
+    HTTPClient http;
+    http.begin(url);
+    http.addHeader("Content-Type", "application/json");
+    int httpCode = http.POST(jsonString);
+    if (httpCode > 0) {
+      String response = http.getString();
+      Serial.print("[WIFI-SERVER] Balasan: ");
+      Serial.println(response);
+    } else {
+      Serial.print("[WIFI-ERROR] Gagal kirim data: ");
+      Serial.println(http.errorToString(httpCode));
+    }
+    http.end();
+  } else {
+    Serial.println("[WIFI-ERROR] Koneksi putus, data tidak terkirim.");
+  }
 }

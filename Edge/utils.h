@@ -2,20 +2,15 @@
 #define UTILS_H
 
 #include <Arduino.h>
-#include <BLEDevice.h>
+#include <BLEServer.h>
 #include "ButterworthFilter.h"
 
-// Deklarasi fungsi-fungsi helper.
-// Perhatikan bagaimana kita menambahkan parameter untuk variabel yang tadinya global.
-
-void setupBLE(BLEServer* &pServer, BLECharacteristic* &pCharacteristic);
-
-float readAndFilterECG(ButterworthFilter &filter, int pin);
-
-void sendDataToServer(const char* url, const char* deviceId, const char* timestamp, float* buffer, int length);
-
+// Deklarasi fungsi-fungsi
+void setupOperationalBLE(BLEServer* &pServer, BLECharacteristic* &pCharacteristic, BLEServerCallbacks* callbacks);
+void startBleProvisioning(BLEServer* &pServer, BLECharacteristicCallbacks* callbacks);
+bool provisionViaWifi(const char* registerUrl);
 bool isSignalValid(int loPlusPin, int loMinusPin);
-
 String getTimestamp();
+void sendDataToServer(const char* url, const char* deviceId, const char* timestamp, float* beatBuffer, float* afibBuffer, int length);
 
 #endif

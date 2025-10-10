@@ -1,36 +1,30 @@
 #include "ButterworthFilter.h"
+#include <string.h>
 
-// Implementasi Konstruktor
-ButterworthFilter::ButterworthFilter() {
-  // Koefisien untuk filter Butterworth Orde 3, Bandpass 0.5-40 Hz, Fs=360Hz
-  a[0] = 1.0;
-  a[1] = -2.22498772;
-  a[2] = 1.90591593;
-  a[3] = -0.63004815;
-
-  b[0] = 0.18475754;
-  b[1] = -0.11728189;
-  b[2] = -0.11728189;
-  b[3] = 0.18475754;
-
-  // Panggil reset untuk memastikan state awal adalah nol
+ButterworthFilter::ButterworthFilter(const float* b_coeffs, const float* a_coeffs, int order) : _order(order) {
+  _b = new float[_order + 1];
+  _a = new float[_order + 1];
+  _w = new float[_order];
+  memcpy(_b, b_coeffs, (_order + 1) * sizeof(float));
+  memcpy(_a, a_coeffs, (_order + 1) * sizeof(float));
   reset();
 }
 
-// Implementasi fungsi reset
-void ButterworthFilter::reset() {
-  for (int i = 0; i < 3; i++) {
-    w[i] = 0.0f; // 'f' menandakan tipe float
-  }
+ButterworthFilter::~ButterworthFilter() {
+  delete[] _b;
+  delete[] _a;
+  delete[] _w;
 }
 
-// Implementasi fungsi update dengan struktur Direct Form II Transposed
+void ButterworthFilter::reset() {
+  memset(_w, 0, _order * sizeof(float));
+}
+
 float ButterworthFilter::update(float newSample) {
-  float output = b[0] * newSample + w[0];
-  
-  w[0] = b[1] * newSample - a[1] * output + w[1];
-  w[1] = b[2] * newSample - a[2] * output + w[2];
-  w[2] = b[3] * newSample - a[3] * output;
-  
+  float output = _b[0] * newSample + _w[0];
+  for (int i = 0; i < _order - 1; i++) {
+    _w[i] = _b[i + 1] * newSample - _a[i + 1] * output + _w[i + 1];
+  }
+  _w[_order - 1] = _b[_order] * newSample - _a[_order] * output;
   return output;
 }

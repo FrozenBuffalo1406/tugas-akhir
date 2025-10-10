@@ -1,106 +1,194 @@
-#include <WiFi.h>
+#include <WiFiManager.h>
+#include <Preferences.h>
+#include <ArduinoJson.h>
 
-// Include Class dan Utilities
+#include "config.h"
 #include "ButterworthFilter.h"
 #include "utils.h"
 #include "time.h"
 
-// Konfigurasi sekarang terpusat di sini
-const char* WIFI_SSID = "OIOI SPACE_5G";
-const char* WIFI_PASS = "paloymaloy";
-const char* SERVER_URL = "http://192.168.1.10:5000/api/analyze-ecg";
-
-const char* DEVICE_ID = "ESP32_ECG_01";
-
-const int ECG_PIN = 34;
-const int LO_PLUS_PIN = 25;  // Terhubung ke pin LO+ di AD8232
-const int LO_MINUS_PIN = 26; // Terhubung ke pin LO- di AD8232
-const int SDN_PIN = 27;
-
-const int SIGNAL_LENGTH = 1024;
-const int SAMPLING_RATE = 360;
-
-const char* ntpServer = "pool.ntp.org";
-const long gmtOffset_sec = 0;
-const int daylightOffset_sec = 0;
-
-ButterworthFilter ecgFilter;
-
+// --- VARIABEL GLOBAL (BUKAN KONSTANTA) ---
+char SERVER_ADDRESS[100];
+String DEVICE_ID = "";
+bool isProvisioned = false;
+Preferences preferences;
+ButterworthFilter beatFilter(b_beat, a_beat, FILTER_ORDER);
+ButterworthFilter afibFilter(b_afib, a_afib, FILTER_ORDER);
 BLEServer* pServer = NULL;
-BLECharacteristic* pCharacteristic = NULL;
-bool deviceConnected = false; 
-
-float ecgBuffer[SIGNAL_LENGTH];
+BLECharacteristic* pEcgCharacteristic = NULL;
+bool deviceConnected = false;
+float ecgBeatBuffer[SIGNAL_LENGTH];
+float ecgAfibBuffer[SIGNAL_LENGTH];
 int bufferIndex = 0;
 unsigned long lastSampleTime = 0;
 const long sampleInterval = 1000 / SAMPLING_RATE;
+bool isSensorActive = true;
+unsigned long lastActivityTime = 0;
 
+// =================================================================
+// ==                 FUNGSI & CLASS HELPER LOKAL                 ==
+// =================================================================
+
+// [PERBAIKAN] Forward Declaration untuk memberitahu compiler
+void sensorSleep();
+void sensorWakeUp();
+
+class IDCharacteristicCallback : public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic *pCharacteristic) {
+        // [PERBAIKAN] Gunakan tipe data 'String' dari Arduino
+        String value = pCharacteristic->getValue().c_str();
+        if (value.length() > 0) {
+            // [PERBAIKAN] Langsung assign dari String ke String
+            DEVICE_ID = value; 
+            Serial.printf("[PROVISIONING] Menerima Device ID via BLE: %s\n", DEVICE_ID.c_str());
+            preferences.putString("device_id", DEVICE_ID);
+            isProvisioned = true;
+            Serial.println("[PROVISIONING] Registrasi sukses! Me-restart perangkat dalam 3 detik...");
+            delay(3000);
+            ESP.restart();
+        }
+    }
+};
+
+class MyServerCallbacks : public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) {
+        deviceConnected = true;
+        Serial.println("[BLE] Perangkat terhubung, sensor diaktifkan...");
+        sensorWakeUp();
+    }
+    void onDisconnect(BLEServer* pServer) {
+        deviceConnected = false;
+        Serial.println("[BLE] Perangkat terputus");
+        pServer->getAdvertising()->start();
+    }
+};
+
+void sensorSleep() {
+    if (isSensorActive) {
+        Serial.println("[POWER] Sensor dinonaktifkan untuk hemat daya.");
+        digitalWrite(SDN_PIN, LOW);
+        isSensorActive = false;
+    }
+}
+
+void sensorWakeUp() {
+    if (!isSensorActive) {
+        Serial.println("[POWER] Sensor diaktifkan.");
+        digitalWrite(SDN_PIN, HIGH);
+        isSensorActive = true;
+        beatFilter.reset();
+        afibFilter.reset();
+        bufferIndex = 0;
+        lastActivityTime = millis();
+    }
+}
+
+// --- FUNGSI UTAMA ARDUINO ---
 void setup() {
-  Serial.begin(115200);
-  delay(1000);
-
-  pinMode(LO_PLUS_PIN, INPUT);
-  pinMode(LO_MINUS_PIN, INPUT);
-  pinMode(SDN_PIN, OUTPUT);
-  digitalWrite(SDN_PIN, HIGH);
-
-  // --- Setup WiFi ---
-  Serial.printf("Menyambung ke WiFi: %s\n", WIFI_SSID);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("\n[WIFI] WiFi tersambung!");
-  Serial.print("[WIFI] Alamat IP ESP32: ");
-  Serial.println(WiFi.localIP());
-
-  // --- 2. Sinkronisasi Waktu NTP ---
-  Serial.println("Sinkronisasi waktu via NTP...");
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-  struct tm timeinfo;
-  while (!getLocalTime(&timeinfo)) {
-    Serial.print(".");
+    Serial.begin(115200);
     delay(1000);
-  }
-  //debug comment for: ntp 
-  Serial.println("\n[NTP] Waktu berhasil disinkronisasi!");
-  
-  setupBLE(pServer, pCharacteristic);
+
+    pinMode(LO_PLUS_PIN, INPUT);
+    pinMode(LO_MINUS_PIN, INPUT);
+    pinMode(SDN_PIN, OUTPUT);
+    digitalWrite(SDN_PIN, HIGH);
+
+    preferences.begin("ecg-device", false);
+    DEVICE_ID = preferences.getString("device_id", "");
+    isProvisioned = (DEVICE_ID != "");
+
+    WiFiManager wm;
+    WiFiManagerParameter custom_server_url("server", "URL Server", DEFAULT_SERVER_ADDRESS, 100);
+    wm.addParameter(&custom_server_url);
+
+    if (isProvisioned) {
+        // === JALUR OPERASIONAL NORMAL ===
+        Serial.printf("[INFO] Perangkat sudah terdaftar dengan ID: %s\n", DEVICE_ID.c_str());
+        if (!wm.autoConnect()) {
+            Serial.println("Gagal konek, masuk mode portal.");
+        }
+        strcpy(SERVER_ADDRESS, custom_server_url.getValue());
+        Serial.println("[WIFI] Tersambung!");
+
+        configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
+        struct tm timeinfo;
+        while (!getLocalTime(&timeinfo) || timeinfo.tm_year < 124) {
+            delay(1000); Serial.print(".");
+        }
+        Serial.println("\n[NTP] Waktu berhasil disinkronisasi!");
+
+        setupOperationalBLE(pServer, pEcgCharacteristic, new MyServerCallbacks());
+        lastActivityTime = millis();
+        Serial.println("\n[INFO] Setup selesai. Memulai loop utama...");
+    } else {
+        // === JALUR PROVISIONING / REGISTRASI ===
+        Serial.println("[PROVISIONING] Perangkat ini belum terdaftar.");
+        if (wm.autoConnect("ECG-Device-Setup-AP")) {
+            Serial.println("\n[WIFI] Tersambung via portal.");
+            strcpy(SERVER_ADDRESS, custom_server_url.getValue());
+            String registerUrl = String(SERVER_ADDRESS) + "/api/register";
+            if (provisionViaWifi(registerUrl.c_str())) {
+                Serial.println("[PROVISIONING] Registrasi via Wi-Fi berhasil! Me-restart...");
+                delay(3000);
+                ESP.restart();
+            } else {
+                startBleProvisioning(pServer, new IDCharacteristicCallback());
+            }
+        } else {
+            Serial.println("\n[WIFI] Gagal terhubung ke Wi-Fi via portal.");
+            WiFi.mode(WIFI_OFF);
+            startBleProvisioning(pServer, new IDCharacteristicCallback());
+        }
+    }
 }
 
 void loop() {
-  if (millis() - lastSampleTime >= sampleInterval) {
-    lastSampleTime = millis();
-
-    if (!isSignalValid(LO_PLUS_PIN, LO_MINUS_PIN)) {
-      Serial.println("[WARNING] Elektroda terlepas! Tidak ada data yang direkam.");
-      // Keluar dari blok if ini dan tunggu siklus berikutnya
-      // Ini mencegah data "sampah" masuk ke buffer
-      return; 
+    if (!isProvisioned) {
+        delay(1000);
+        return;
     }
 
-    if (bufferIndex < SIGNAL_LENGTH) {
-      // Manggil fungsi dari utils dengan parameter
-      float filteredValue = readAndFilterECG(ecgFilter, ECG_PIN);
-      ecgBuffer[bufferIndex] = filteredValue;
+    if (isSensorActive) {
+        if (millis() - lastSampleTime >= sampleInterval) {
+            lastSampleTime = millis();
+            bool signalValid = isSignalValid(LO_PLUS_PIN, LO_MINUS_PIN);
 
-      if (deviceConnected) {
-        pCharacteristic->setValue((uint8_t*)&filteredValue, 4);
-        pCharacteristic->notify();
-      }
-      bufferIndex++;
+            if (signalValid || deviceConnected) {
+                lastActivityTime = millis();
+            }
+
+            if (signalValid) {
+                if (bufferIndex < SIGNAL_LENGTH) {
+                    float rawValue = analogRead(ECG_PIN);
+                    float filteredBeat = beatFilter.update(rawValue);
+                    float filteredAfib = afibFilter.update(rawValue);
+                    
+                    ecgBeatBuffer[bufferIndex] = filteredBeat;
+                    ecgAfibBuffer[bufferIndex] = filteredAfib;
+                    
+                    if (deviceConnected) {
+                        pEcgCharacteristic->setValue((uint8_t*)&filteredBeat, 4);
+                        pEcgCharacteristic->notify();
+                    }
+                    bufferIndex++;
+                }
+            } else {
+                if(!deviceConnected) Serial.println("[WARNING] Elektroda terlepas!");
+            }
+        }
+
+        if (bufferIndex >= SIGNAL_LENGTH) {
+            String timestamp = getTimestamp();
+            String serverEndpoint = String(SERVER_ADDRESS) + "/api/analyze-ecg";
+            sendDataToServer(serverEndpoint.c_str(), DEVICE_ID.c_str(), timestamp.c_str(), ecgBeatBuffer, ecgAfibBuffer, SIGNAL_LENGTH);
+            bufferIndex = 0;
+            beatFilter.reset();
+            afibFilter.reset();
+            Serial.println("\n[INFO] Buffer direset.");
+        }
     }
-  }
 
-  if (bufferIndex >= SIGNAL_LENGTH) {
-
-    String timestamp = getTimestamp();
-
-    // Manggil fungsi dari utils dengan parameter
-    sendDataToServer(SERVER_URL, DEVICE_ID, timestamp.c_str(), ecgBuffer, SIGNAL_LENGTH);
-    bufferIndex = 0;
-    ecgFilter.reset();
-    Serial.println("\n[INFO] Buffer direset. Memulai pengumpulan data baru...");
-  }
+    if (isSensorActive && !deviceConnected && (millis() - lastActivityTime > INACTIVITY_TIMEOUT_MS)) {
+        sensorSleep();
+    }
 }
