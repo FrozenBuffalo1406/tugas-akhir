@@ -6,7 +6,8 @@
 // =================================================================
 
 // --- Konfigurasi Jaringan & Server ---
-static const char* DEFAULT_SERVER_ADDRESS = "http://http://127.0.0.1:5000";
+// static const char* DEFAULT_SERVER_ADDRESS = "192.168.1.30:5000";
+static const char* DEFAULT_SERVER_ADDRESS = "http://192.168.1.30:8080";
 
 // --- Konfigurasi Perangkat & Sensor ---
 static const int ECG_PIN = 34;
@@ -18,7 +19,7 @@ static const int SDN_PIN = 27;
 static const int SIGNAL_LENGTH = 1024;
 static const int SAMPLING_RATE = 360;
 static const char* NTP_SERVER = "pool.ntp.org";
-static const long GMT_OFFSET_SEC = 0;
+static const long GMT_OFFSET_SEC = 0; // Tetap 0 untuk sinkronisasi ke UTC
 static const int DAYLIGHT_OFFSET_SEC = 0;
 
 // --- Konfigurasi Filter ---
@@ -31,7 +32,6 @@ static const float b_afib[] = {0.05193931, 0.00769507, -0.00769507, -0.05193931}
 static const float a_afib[] = {1.0, -2.4834211, 2.1311083, -0.63914615};
 
 // --- Konfigurasi BLE Operasional ---
-// #define tidak perlu 'static' karena bukan variabel
 #define OP_SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
 #define ECG_CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 

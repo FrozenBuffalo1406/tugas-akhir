@@ -25,23 +25,25 @@ const long sampleInterval = 1000 / SAMPLING_RATE;
 bool isSensorActive = true;
 unsigned long lastActivityTime = 0;
 
-// =================================================================
-// ==                 FUNGSI & CLASS HELPER LOKAL                 ==
-// =================================================================
+// --- DEFINISI CLASS CALLBACKS & FUNGSI HELPER LOKAL ---
 
-// [PERBAIKAN] Forward Declaration untuk memberitahu compiler
+// Deklarasi awal (Forward Declaration)
 void sensorSleep();
 void sensorWakeUp();
 
 class IDCharacteristicCallback : public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) {
-        // [PERBAIKAN] Gunakan tipe data 'String' dari Arduino
         String value = pCharacteristic->getValue().c_str();
         if (value.length() > 0) {
-            // [PERBAIKAN] Langsung assign dari String ke String
-            DEVICE_ID = value; 
+            DEVICE_ID = value;
             Serial.printf("[PROVISIONING] Menerima Device ID via BLE: %s\n", DEVICE_ID.c_str());
-            preferences.putString("device_id", DEVICE_ID);
+            
+            // [PERBAIKAN] Buka, Tulis, dan Tutup preferences di sini
+            Preferences localPrefs;
+            localPrefs.begin("ecg-device", false);
+            localPrefs.putString("device_id", DEVICE_ID);
+            localPrefs.end(); // Memastikan data ditulis ke flash
+
             isProvisioned = true;
             Serial.println("[PROVISIONING] Registrasi sukses! Me-restart perangkat dalam 3 detik...");
             delay(3000);
@@ -126,7 +128,7 @@ void setup() {
         if (wm.autoConnect("ECG-Device-Setup-AP")) {
             Serial.println("\n[WIFI] Tersambung via portal.");
             strcpy(SERVER_ADDRESS, custom_server_url.getValue());
-            String registerUrl = String(SERVER_ADDRESS) + "/api/register";
+            String registerUrl = String(SERVER_ADDRESS) + "/api/register-device";
             if (provisionViaWifi(registerUrl.c_str())) {
                 Serial.println("[PROVISIONING] Registrasi via Wi-Fi berhasil! Me-restart...");
                 delay(3000);
