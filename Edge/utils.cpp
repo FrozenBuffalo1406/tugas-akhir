@@ -6,7 +6,43 @@
 #include <BLEDevice.h>
 #include <BLE2902.h>
 #include "time.h"
-#include <Preferences.h>
+#include "ButterworthFilter.h"
+
+// Deklarasi eksternal untuk variabel global dari Edge.ino
+extern bool isSensorActive;
+extern ButterworthFilter* beatFilter;
+extern ButterworthFilter* afibFilter;
+extern int bufferIndex;
+extern unsigned long lastActivityTime;
+extern unsigned long buttonPressStartTime;
+extern bool longPressTriggered;
+
+String getDeviceIdentity() {
+    String mac = WiFi.macAddress();
+    JsonDocument doc;
+    doc["mac_address"] = mac.c_str();
+    String payload;
+    serializeJson(doc, payload);
+
+    HTTPClient http;
+    String registerUrl = String(SERVER_ADDRESS) + "/api/register-device";
+    http.begin(registerUrl);
+    http.addHeader("Content-Type", "application/json");
+    
+    Serial.printf("[HTTP] Meminta Device ID dari server dengan MAC: %s\n", mac.c_str());
+
+    int httpCode = http.POST(payload);
+    if (httpCode == 200 || httpCode == 201) {
+        String response = http.getString();
+        deserializeJson(doc, response);
+        if (!doc["device_id"].isNull()) {
+            return doc["device_id"].as<String>();
+        }
+    } else {
+        Serial.printf("[HTTP-ERROR] Gagal registrasi, kode: %d, error: %s\n", httpCode, http.errorToString(httpCode).c_str());
+    }
+    return ""; // Kembalikan string kosong jika gagal
+}
 
 void setupOperationalBLE(BLEServer* &pServer, BLECharacteristic* &pCharacteristic, BLEServerCallbacks* callbacks) {
     String mac = WiFi.macAddress();
@@ -29,53 +65,6 @@ void setupOperationalBLE(BLEServer* &pServer, BLECharacteristic* &pCharacteristi
     Serial.println("[BLE] Mode Operasional Aktif. Menunggu koneksi...");
 }
 
-void startBleProvisioning(BLEServer* &pServer, BLECharacteristicCallbacks* idCallbacks) {
-    String mac = WiFi.macAddress();
-    String macSuffix = mac.substring(12);
-    macSuffix.replace(":", "");
-    String deviceName = "ECG_Setup_" + macSuffix;
-
-    BLEDevice::init(deviceName.c_str());
-    pServer = BLEDevice::createServer();
-    BLEService *pProvService = pServer->createService(PROV_SERVICE_UUID);
-    BLECharacteristic *pMacCharacteristic = pProvService->createCharacteristic(MAC_CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_READ);
-    pMacCharacteristic->setValue(mac.c_str());
-    BLECharacteristic *pIdCharacteristic = pProvService->createCharacteristic(ID_CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_WRITE);
-    pIdCharacteristic->setCallbacks(idCallbacks);
-    pProvService->start();
-    BLEDevice::getAdvertising()->addServiceUUID(PROV_SERVICE_UUID);
-    BLEDevice::startAdvertising();
-    Serial.println("[BLE] Mode Provisioning Aktif. Menunggu koneksi dari HP...");
-}
-
-bool provisionViaWifi(const char* registerUrl) {
-    String mac = WiFi.macAddress();
-    JsonDocument doc;
-    doc["mac_address"] = mac.c_str();
-    String payload;
-    serializeJson(doc, payload);
-    HTTPClient http;
-    http.begin(registerUrl);
-    http.addHeader("Content-Type", "application/json");
-    int httpCode = http.POST(payload);
-    if (httpCode == 200 || httpCode == 201) {
-        String response = http.getString();
-        deserializeJson(doc, response);
-        if (!doc["device_id"].isNull()) {
-            String receivedId = doc["device_id"].as<String>();
-            // [PERBAIKAN] Langsung simpan ID yang diterima ke memori
-            Preferences prefs;
-            prefs.begin("ecg-device", false);
-            prefs.putString("device_id", receivedId);
-            prefs.end();
-            http.end();
-            return true;
-        }
-    }
-    http.end();
-    return false;
-}
-
 bool isSignalValid(int loPlusPin, int loMinusPin) {
     return (digitalRead(loPlusPin) == LOW && digitalRead(loMinusPin) == LOW);
 }
@@ -84,7 +73,6 @@ String getTimestamp() {
     time_t now;
     struct tm timeinfo;
     time(&now);
-    gmtime_r(&now, &timeinfo);
     if (timeinfo.tm_year < 124) { // Cek jika waktu belum valid (di bawah tahun 2024)
         return "0000-00-00T00:00:00+00:00";
     }
@@ -101,26 +89,17 @@ void sendDataToServer(const char* url, const char* deviceId, const char* timesta
         JsonDocument doc;
         doc["device_id"] = deviceId;
         doc["timestamp"] = timestamp;
-        
         JsonArray ecgBeatData = doc["ecg_beat_data"].to<JsonArray>();
-        for (int i = 0; i < length; i++) {
-            ecgBeatData.add(beatBuffer[i]);
-        }
-        
+        for (int i = 0; i < length; i++) { ecgBeatData.add(beatBuffer[i]); }
         JsonArray ecgAfibData = doc["ecg_afib_data"].to<JsonArray>();
-        for (int i = 0; i < length; i++) {
-            ecgAfibData.add(afibBuffer[i]);
-        }
-        
+        for (int i = 0; i < length; i++) { ecgAfibData.add(afibBuffer[i]); }
         String jsonString;
         serializeJson(doc, jsonString);
-        
         HTTPClient http;
         http.begin(url);
         http.addHeader("Content-Type", "application/json");
-        http.setTimeout(10000)
+        http.setTimeout(10000);
         int httpCode = http.POST(jsonString);
-
         if (httpCode > 0) {
             String response = http.getString();
             Serial.print("[WIFI-SERVER] Balasan: ");
@@ -133,4 +112,47 @@ void sendDataToServer(const char* url, const char* deviceId, const char* timesta
     } else {
         Serial.println("[WIFI-ERROR] Koneksi putus, data tidak terkirim.");
     }
+}
+
+void sensorSleep() {
+    if (isSensorActive) {
+        Serial.println("[POWER] Sensor dinonaktifkan untuk hemat daya.");
+        digitalWrite(SDN_PIN, LOW);
+        isSensorActive = false;
+    }
+}
+
+void sensorWakeUp() {
+    if (!isSensorActive) {
+        Serial.println("[POWER] Sensor diaktifkan.");
+        digitalWrite(SDN_PIN, HIGH);
+        isSensorActive = true;
+        beatFilter->reset();
+        afibFilter->reset();
+        bufferIndex = 0;
+        lastActivityTime = millis();
+    }
+}
+
+void handleFactoryReset() {
+  if (digitalRead(FACTORY_RESET_PIN) == LOW) {
+    if (buttonPressStartTime == 0) {
+      buttonPressStartTime = millis();
+      longPressTriggered = false;
+      Serial.println("[RESET] Tombol reset terdeteksi, tahan selama 3 detik...");
+    }
+    if (!longPressTriggered && (millis() - buttonPressStartTime > longPressDuration)) {
+      Serial.println("\n[RESET] Melakukan factory reset...");
+      WiFi.disconnect(true, true); // Menghapus kredensial Wi-Fi
+      Serial.println("[RESET] Kredensial Wi-Fi dihapus. Perangkat akan restart.");
+      delay(1000);
+      ESP.restart();
+      longPressTriggered = true;
+    }
+  } else {
+    if (buttonPressStartTime != 0) {
+      Serial.println("[RESET] Batal.");
+      buttonPressStartTime = 0;
+    }
+  }
 }
