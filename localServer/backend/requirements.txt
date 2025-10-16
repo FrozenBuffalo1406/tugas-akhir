@@ -1,0 +1,25 @@
+# Flask & Server
+flask
+flask-cors
+gunicorn
+python-dotenv
+
+# Machine Learning & Data
+tensorflow
+numpy
+
+# Opsional (jika butuh, tergantung model klasifikasi)
+scikit-learn
+Flask 
+
+Flask-SQLAlchemy 
+Flask-Migrate 
+Flask-Bcrypt
+Flask-JWT-Extended  
+tensorflow 
+numpy 
+
+
+waitress
+
+python-dotenv
