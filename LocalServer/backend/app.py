@@ -13,30 +13,72 @@ from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from tensorflow import keras
 from keras import layers
+from tensorflow.keras.saving import register_keras_serializable
 import tensorflow as tf
+from keras.layers import Layer
 
 # =============================================================================
 # 2. DEFINISI CUSTOM ATTENTION LAYER (PENTING!)
 # =============================================================================
 # Pastikan class Attention ini SAMA PERSIS dengan saat training
-class Attention(layers.Layer):
+
+@tf.keras.saving.register_keras_serializable()
+class Attention(Layer):
+    """Custom Attention Layer yang sudah dimodernisasi & diperkuat."""
     def __init__(self, **kwargs):
+
         super(Attention, self).__init__(**kwargs)
+        # Inisialisasi awal (opsional tapi aman)
+        self.W = None
+        self.b = None
 
     def build(self, input_shape):
-        self.W = self.add_weight(name="att_weight", shape=(input_shape[-1], 1), initializer="normal")
-        self.b = self.add_weight(name="att_bias", shape=(input_shape[1], 1), initializer="zeros")
+        # Pastikan input_shape valid
+        if not isinstance(input_shape, tf.TensorShape):
+             input_shape = tf.TensorShape(input_shape)
+
+        last_dim = input_shape[-1]
+        timesteps = input_shape[1]
+
+        if last_dim is None or timesteps is None:
+             raise ValueError(
+                 "Dimensi input untuk Attention layer harus diketahui "
+                 f"(timesteps dan features). Diterima: {input_shape}"
+             )
+
+        # Definisikan bobot (weights)
+        self.W = self.add_weight(
+            name="att_weight",
+            shape=(last_dim, 1),
+            initializer="normal",
+            trainable=True
+        )
+        self.b = self.add_weight(
+            name="att_bias",
+            shape=(timesteps, 1),
+            initializer="zeros",
+            trainable=True
+        )
+        # Panggil build dari parent class di akhir
         super(Attention, self).build(input_shape)
+        print(f"--- Attention build completed. Weights W: {self.W is not None}, b: {self.b is not None} ---") # Debug message
 
     def call(self, x):
-        et = tf.squeeze(tf.tanh(tf.matmul(x, self.W) + self.b), axis=-1)
+        # --- Tambahan Cek Keamanan ---
+        if self.W is None or self.b is None:
+             raise ValueError("Attention weights W or b not initialized. Build method might have failed.")
+        # ----------------------------
+
+        et = tf.squeeze(tf.nn.tanh(tf.matmul(x, self.W) + self.b), axis=-1)
         at = tf.nn.softmax(et)
         at = tf.expand_dims(at, axis=-1)
         output = x * at
         return tf.reduce_sum(output, axis=1)
 
+    # --- Tambahan: Definisikan Bentuk Output Secara Eksplisit ---
     def compute_output_shape(self, input_shape):
-        return (input_shape[0], input_shape[-1])
+        return tf.TensorShape((input_shape[0], input_shape[-1]))
+    # -----------------------------------------------------------
 
     def get_config(self):
         config = super(Attention, self).get_config()
@@ -64,7 +106,7 @@ CORS(app)
 log_dir = os.path.join(basedir, 'logs')
 if not os.path.exists(log_dir):
     os.makedirs(log_dir)
-file_handler = RotatingFileHandler(os.path.join(log_dir, 'app.log'), maxBytes=10240, backupCount=10)
+file_handler = RotatingFileHandler(os.path.join(log_dir, 'app.log'), maxBytes=10240, backupCount=10, encoding='utf-8')
 file_handler.setFormatter(logging.Formatter(
     '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
 ))
