@@ -1,0 +1,8 @@
+#global
+
+#backend
+.venv/
+backend/__pycache__/
+backend/instance/
+backend/data/
+ecg_data.db
