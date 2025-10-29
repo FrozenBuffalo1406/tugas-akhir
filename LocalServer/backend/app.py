@@ -1,6 +1,3 @@
-# =============================================================================
-# 1. IMPORT LIBRARY YANG DIBUTUHKAN
-# =============================================================================
 import os
 import sys
 import logging
@@ -17,18 +14,13 @@ from tensorflow.keras.saving import register_keras_serializable
 import tensorflow as tf
 from keras.layers import Layer
 
-# =============================================================================
-# 2. DEFINISI CUSTOM ATTENTION LAYER (PENTING!)
-# =============================================================================
-# Pastikan class Attention ini SAMA PERSIS dengan saat training
-
+# costum attention layer due to model training & saving
 @tf.keras.saving.register_keras_serializable()
 class Attention(Layer):
     """Custom Attention Layer yang sudah dimodernisasi & diperkuat."""
     def __init__(self, **kwargs):
 
         super(Attention, self).__init__(**kwargs)
-        # Inisialisasi awal (opsional tapi aman)
         self.W = None
         self.b = None
 
@@ -46,7 +38,6 @@ class Attention(Layer):
                  f"(timesteps dan features). Diterima: {input_shape}"
              )
 
-        # Definisikan bobot (weights)
         self.W = self.add_weight(
             name="att_weight",
             shape=(last_dim, 1),
@@ -59,15 +50,13 @@ class Attention(Layer):
             initializer="zeros",
             trainable=True
         )
-        # Panggil build dari parent class di akhir
         super(Attention, self).build(input_shape)
         print(f"--- Attention build completed. Weights W: {self.W is not None}, b: {self.b is not None} ---") # Debug message
 
     def call(self, x):
-        # --- Tambahan Cek Keamanan ---
         if self.W is None or self.b is None:
              raise ValueError("Attention weights W or b not initialized. Build method might have failed.")
-        # ----------------------------
+
 
         et = tf.squeeze(tf.nn.tanh(tf.matmul(x, self.W) + self.b), axis=-1)
         at = tf.nn.softmax(et)
@@ -75,18 +64,16 @@ class Attention(Layer):
         output = x * at
         return tf.reduce_sum(output, axis=1)
 
-    # --- Tambahan: Definisikan Bentuk Output Secara Eksplisit ---
     def compute_output_shape(self, input_shape):
         return tf.TensorShape((input_shape[0], input_shape[-1]))
-    # -----------------------------------------------------------
 
     def get_config(self):
         config = super(Attention, self).get_config()
         return config
 
-# =============================================================================
-# 3. KONFIGURASI APLIKASI, DATABASE, DAN LOGGING
-# =============================================================================
+
+# 3. logging, database, and app configurations
+
 app = Flask(__name__)
 basedir = os.path.abspath(os.path.dirname(__file__))
 # Gunakan environment variable untuk path database, fallback ke SQLite lokal
@@ -120,7 +107,6 @@ classification_model = None
 MODEL_FILENAME = 'beat_classifier_model_SMOTE.keras'
 MODEL_PATH = os.getenv('MODEL_PATH', os.path.join(basedir, f'model/{MODEL_FILENAME}'))
 
-
 def load_all_models():
     """ Load model klasifikasi ke memori """
     global classification_model
@@ -142,9 +128,7 @@ def load_all_models():
         # sys.exit(1)
     app.logger.info("="*50)
 
-# =============================================================================
-# 4. DEFINISI MODEL DATABASE (STRUKTUR TABEL)
-# =============================================================================
+# 4. table database models
 class Device(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     mac_address = db.Column(db.String(17), unique=True, nullable=False)
@@ -163,9 +147,8 @@ class ECGReading(db.Model):
     processed_ecg_data = db.Column(db.JSON, nullable=True)
     device_id = db.Column(db.Integer, db.ForeignKey('device.id'), nullable=False)
 
-# =============================================================================
-# 5. FUNGSI UTILITY & PREPROCESSING (Input 1024)
-# =============================================================================
+
+# 5. util and preprocessing functions
 def preprocess_input(data: list, target_length: int = 1024):
     arr = np.array(data, dtype=np.float32)
     if len(arr) < target_length:
@@ -179,12 +162,14 @@ def preprocess_input(data: list, target_length: int = 1024):
     normalized_arr = (arr - mean) / std
     return normalized_arr.reshape(1, target_length, 1)
 
-# =============================================================================
-# 6. API SERVICES (Inference diaktifkan)
-# =============================================================================
+
+# 6. API ROUTES
+
 @app.route("/")
 def index():
     return jsonify({"message": "Server Analisis ECG berjalan!", "model_loaded": (classification_model is not None)})
+
+
 
 @app.route('/api/register-device', methods=['POST'])
 def register_device():
@@ -204,6 +189,8 @@ def register_device():
         db.session.commit()
         app.logger.info(f"Perangkat baru {mac} didaftarkan dengan ID: {new_device_id}")
         return jsonify({"device_id": new_device_id}), 201
+
+
 
 @app.route('/api/analyze-ecg', methods=['POST'])
 def analyze_ecg():

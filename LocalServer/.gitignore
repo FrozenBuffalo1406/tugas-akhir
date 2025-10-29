@@ -1,4 +1,7 @@
 #global
+.dockerignore
+Dockerfile
+docker-compose.yml
 
 #backend
 .venv/

@@ -19,7 +19,6 @@ logs/
 .git
 .gitignore
 .gitattributes
-.vscode/
 .idea/
 
 *.DS_Store
