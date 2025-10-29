@@ -1,14 +1,16 @@
 # Base image Python 3.8
-FROM python:3.8-slim
+FROM python:3.11-slim
 
 # Set working directory di dalam kontainer
 WORKDIR /app
 
 # Install dependensi sistem jika perlu (misal: build-essential kalau ada library C)
-# RUN apt-get update && apt-get install -y --no-install-recommends build-essential && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements dulu untuk optimasi cache Docker
 COPY backend/requirements.txt .
+
+RUN pip install --upgrade pip
 
 # Install library Python
 # Gunakan --default-timeout=100 untuk koneksi lambat
