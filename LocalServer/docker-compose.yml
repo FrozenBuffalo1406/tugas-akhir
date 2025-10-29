@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  backend:
+    build: . # Build dari Dockerfile di direktori ini
+    container_name: ecg_backend_service
+    ports:
+      - "5000:8000" # Map port 5000 VPS ke port 8000 kontainer
+    volumes:
+      # Map folder 'data' di VPS ke '/app/data' di kontainer
+      # Ini akan menyimpan file ecg_data.db di luar kontainer (aman)
+      - ./data:/app/data
+      # Map folder 'logs' di VPS ke '/app/logs' di kontainer
+      - ./logs:/app/logs
+      # Map folder 'model' dari lokal ke kontainer (opsional, jika model sering update)
+      # - ./backend/model:/app/model
+    environment:
+      # Kamu bisa set environment variable di sini
+      - DATABASE_URL=sqlite:////app/data/ecg_data.db # Path DB di dalam kontainer
+      # - MODEL_PATH=/app/model/beat_classifier_model_FINAL.keras
+    restart: unless-stopped # Otomatis restart jika crash, kecuali dihentikan manual

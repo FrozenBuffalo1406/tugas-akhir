@@ -1,0 +1,12 @@
+#global
+.dockerignore
+Dockerfile
+docker-compose.yml
+
+#backend
+.venv/
+backend/__pycache__/
+backend/instance/
+backend/data/
+backend/logs/
+ecg_data.db
