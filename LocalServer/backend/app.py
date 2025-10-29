@@ -89,7 +89,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 CORS(app)
 
-# --- Setup Logging Profesional ---
+# --- Setup Logging ---
 log_dir = os.path.join(basedir, 'logs')
 if not os.path.exists(log_dir):
     os.makedirs(log_dir)
@@ -163,13 +163,10 @@ def preprocess_input(data: list, target_length: int = 1024):
     return normalized_arr.reshape(1, target_length, 1)
 
 
-# 6. API ROUTES
-
+# 6. API Routes
 @app.route("/")
 def index():
     return jsonify({"message": "Server Analisis ECG berjalan!", "model_loaded": (classification_model is not None)})
-
-
 
 @app.route('/api/register-device', methods=['POST'])
 def register_device():
@@ -189,8 +186,6 @@ def register_device():
         db.session.commit()
         app.logger.info(f"Perangkat baru {mac} didaftarkan dengan ID: {new_device_id}")
         return jsonify({"device_id": new_device_id}), 201
-
-
 
 @app.route('/api/analyze-ecg', methods=['POST'])
 def analyze_ecg():
@@ -258,9 +253,7 @@ def analyze_ecg():
         app.logger.error(f"ERROR saat memproses data dari {device_id_str}: {e}", exc_info=True)
         return jsonify({"error": f"Kesalahan internal: {str(e)}"}), 500
 
-# =============================================================================
-# 7. PERINTAH KHUSUS UNTUK MANAJEMEN APLIKASI (CLI)
-# =============================================================================
+# 7. app management commands
 @app.cli.command("init-db")
 def init_db_command():
     """Membuat tabel-tabel database dari awal."""
@@ -273,17 +266,13 @@ def init_db_command():
         db.create_all()
     print(f"Database berhasil diinisialisasi di {app.config['SQLALCHEMY_DATABASE_URI']}")
 
-# =============================================================================
 # 8. INISIASI MODEL SAAT STARTUP
-# =============================================================================
 # Panggil load_all_models() di sini agar Gunicorn juga menjalankannya
 # Gunakan app.app_context() jika load model butuh akses ke konfigurasi app
 with app.app_context():
     load_all_models()
 
-# =============================================================================
 # 9. BLOK EKSEKUSI (Hanya untuk Development Lokal, Gunicorn tidak pakai ini)
-# =============================================================================
 if __name__ == '__main__':
     with app.app_context():
         db.create_all() # Buat DB jika belum ada saat development

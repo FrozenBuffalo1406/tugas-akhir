@@ -6,7 +6,7 @@
 // =================================================================
 
 // --- Konfigurasi Jaringan & Server ---
-static const char* SERVER_ADDRESS = "http://192.168.1.29:8080"; // Ganti dengan IP & Port server-mu
+static const char* SERVER_ADDRESS = "http://192.168.1.71:8080"; // Ganti dengan IP & Port server-mu
 
 // --- Konfigurasi Perangkat & Sensor ---
 static const int ECG_PIN = 34;
