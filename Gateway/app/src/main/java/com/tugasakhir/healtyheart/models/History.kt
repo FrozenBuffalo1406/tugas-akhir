@@ -1,4 +1,8 @@
 package com.tugasakhir.healtyheart.models
 
-class history {
-}
+data class History(
+    val id: String,
+    val timestamp: String,
+    val classification: String,
+    val peakValue: Float
+)
