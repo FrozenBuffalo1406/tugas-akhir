@@ -7,6 +7,6 @@ Flask-Bcrypt # Untuk password hashing
 Flask-JWT-Extended # Untuk otentikasi token
 
 numpy
-tensorflow
+tensorflow==2.15.0
 
 python-dotenv
