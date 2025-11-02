@@ -4,12 +4,11 @@
 #include <Arduino.h>
 #include <BLEServer.h>
 
-// Deklarasi fungsi-fungsi
-String getDeviceIdentity();
+String getTimestamp();
 void setupOperationalBLE(BLEServer* &pServer, BLECharacteristic* &pCharacteristic, BLEServerCallbacks* callbacks);
 bool isSignalValid(int loPlusPin, int loMinusPin);
-String getTimestamp();
-void sendDataToServer(const char* url, const char* deviceId, const char* timestamp, float* beatBuffer, float* afibBuffer, int length);
+String getDeviceIdentity(); 
+void sendDataToServer(const char* url, const char* deviceId, const char* timestamp, float* beatBuffer, int length);
 void sensorSleep();
 void sensorWakeUp();
 void handleFactoryReset();

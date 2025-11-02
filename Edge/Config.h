@@ -1,12 +1,9 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-// =================================================================
-// ==              PUSAT KENDALI SEMUA KONFIGURASI                ==
-// =================================================================
-
 // --- Konfigurasi Jaringan & Server ---
-static const char* SERVER_ADDRESS = "http://192.168.1.71:8080"; // Ganti dengan IP & Port server-mu
+static const char* SERVER_ADDRESS = "https://ecg-detection.developedbyme.my.id/";
+//PoP Provisioning
 
 // --- Konfigurasi Perangkat & Sensor ---
 static const int ECG_PIN = 34;
@@ -15,12 +12,13 @@ static const int LO_MINUS_PIN = 26;
 static const int SDN_PIN = 27;
 static const int FACTORY_RESET_PIN = 0; // GPIO 0 adalah pin tombol "BOOT"
 
-// --- Konfigurasi Sinyal & Waktu ---
-static const int SIGNAL_LENGTH = 1024;
+// --- Konfigurasi Sinyal ---
+static const int SIGNAL_LENGTH = 1024; // Tetap 1024 sesuai permintaan
 static const int SAMPLING_RATE = 360;
-static const char* NTP_SERVER = "id.pool.ntp.org";
-static const long GMT_OFFSET_SEC = 7 * 3600; // 7 jam untuk WIB
-static const int DAYLIGHT_OFFSET_SEC = 0;
+
+// time config
+static const long GMT_OFFSET_SEC = 7 * 3600; 
+static const int DAYLIGHT_OFFSET_SEC = 3600;
 
 // --- Konfigurasi Filter ---
 static const int FILTER_ORDER = 3;

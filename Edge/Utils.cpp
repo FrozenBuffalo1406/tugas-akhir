@@ -1,23 +1,31 @@
 #include "utils.h"
 #include "config.h"
 #include <WiFi.h>
-#include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <BLEDevice.h>
 #include <BLE2902.h>
 #include "time.h"
-#include "ButterworthFilter.h"
+#include <Preferences.h>
+#include "butterworthfilter.h"
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h> 
 
-// Deklarasi eksternal untuk variabel global dari Edge.ino
+
+static const char* NTP_SERVER = "id.pool.ntp.org";
+// Deklarasi eksternal
 extern bool isSensorActive;
 extern ButterworthFilter* beatFilter;
-extern ButterworthFilter* afibFilter;
 extern int bufferIndex;
 extern unsigned long lastActivityTime;
 extern unsigned long buttonPressStartTime;
 extern bool longPressTriggered;
+extern float dcBlockerW;
+extern float dcBlockerX;
+extern WiFiClientSecure client; 
 
+// --- Implementasi Fungsi ---
 String getDeviceIdentity() {
+
     String mac = WiFi.macAddress();
     JsonDocument doc;
     doc["mac_address"] = mac.c_str();
@@ -26,14 +34,14 @@ String getDeviceIdentity() {
 
     HTTPClient http;
     String registerUrl = String(SERVER_ADDRESS) + "/api/register-device";
-    http.begin(registerUrl);
+
+    http.begin(client, registerUrl);
     http.addHeader("Content-Type", "application/json");
-    
-    Serial.printf("[HTTP] Meminta Device ID dari server dengan MAC: %s\n", mac.c_str());
 
     int httpCode = http.POST(payload);
     if (httpCode == 200 || httpCode == 201) {
         String response = http.getString();
+        Serial.printf("[WIFI-SERVER] Balasan Registrasi: %s\n", response.c_str());
         deserializeJson(doc, response);
         if (!doc["device_id"].isNull()) {
             return doc["device_id"].as<String>();
@@ -41,23 +49,22 @@ String getDeviceIdentity() {
     } else {
         Serial.printf("[HTTP-ERROR] Gagal registrasi, kode: %d, error: %s\n", httpCode, http.errorToString(httpCode).c_str());
     }
-    return ""; // Kembalikan string kosong jika gagal
+    return "";
 }
+
 
 void setupOperationalBLE(BLEServer* &pServer, BLECharacteristic* &pCharacteristic, BLEServerCallbacks* callbacks) {
     String mac = WiFi.macAddress();
     String macSuffix = mac.substring(12);
     macSuffix.replace(":", "");
     String deviceName = "ECG_Monitor_" + macSuffix;
-
     BLEDevice::init(deviceName.c_str());
     pServer = BLEDevice::createServer();
     pServer->setCallbacks(callbacks);
     BLEService *pService = pServer->createService(OP_SERVICE_UUID);
     pCharacteristic = pService->createCharacteristic(
                         ECG_CHARACTERISTIC_UUID,
-                        BLECharacteristic::PROPERTY_NOTIFY
-                      );
+                        BLECharacteristic::PROPERTY_NOTIFY);
     pCharacteristic->addDescriptor(new BLE2902());
     pService->start();
     BLEDevice::getAdvertising()->addServiceUUID(OP_SERVICE_UUID);
@@ -70,40 +77,82 @@ bool isSignalValid(int loPlusPin, int loMinusPin) {
 }
 
 String getTimestamp() {
-    time_t now;
+    // --- [MODIFIKASI] Inisialisasi waktu dipindah ke sini ---
+    // 'static bool' bikin variabel ini cuma di-set sekali (false) pas program baru nyala.
+    // Pas 'getTimestamp()' dipanggil lagi, nilainya tetep 'true'.
+    static bool timeInitialized = false;
     struct tm timeinfo;
-    time(&now);
-    if (timeinfo.tm_year < 124) { // Cek jika waktu belum valid (di bawah tahun 2024)
-        return "0000-00-00T00:00:00+00:00";
+    
+
+    if (!timeInitialized) {
+        Serial.println("[NTP] Melakukan konfigurasi waktu (NTP) untuk pertama kali...");
+        configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
+        
+        if (getLocalTime(&timeinfo) && timeinfo.tm_year > 125) { // Cek apakah tahun > 2023
+             Serial.println("[NTP] Waktu berhasil disinkronisasi saat inisiasi!");
+        } else {
+            Serial.println("[NTP-WARNING] Sinkronisasi awal belum selesai, akan dicoba di background.");
+        }
+        timeInitialized = true; // Tandai sudah inisiasi
     }
-    const long wibOffset = 7 * 3600;
-    time_t wibTime = now + wibOffset;
-    gmtime_r(&wibTime, &timeinfo);
+    
+    if (!getLocalTime(&timeinfo)) {
+        Serial.println("[TIME-ERROR] Gagal mendapatkan waktu lokal (mungkin belum sinkron).");
+        return "0000-00-00T00:00:00+07:00";
+    }
+
     char timeString[30];
     strftime(timeString, sizeof(timeString), "%Y-%m-%dT%H:%M:%S+07:00", &timeinfo);
     return String(timeString);
 }
 
-void sendDataToServer(const char* url, const char* deviceId, const char* timestamp, float* beatBuffer, float* afibBuffer, int length) {
+void sendDataToServer(const char* url, const char* deviceId, const char* timestamp, float* beatBuffer, int length) {
     if (WiFi.status() == WL_CONNECTED) {
-        JsonDocument doc;
+        DynamicJsonDocument doc(10000);
+
+        if (doc.isNull()) {
+            Serial.println("[FATAL] Gagal alokasi JSON di PSRAM!");
+            return;
+        }
+
         doc["device_id"] = deviceId;
         doc["timestamp"] = timestamp;
         JsonArray ecgBeatData = doc["ecg_beat_data"].to<JsonArray>();
         for (int i = 0; i < length; i++) { ecgBeatData.add(beatBuffer[i]); }
-        JsonArray ecgAfibData = doc["ecg_afib_data"].to<JsonArray>();
-        for (int i = 0; i < length; i++) { ecgAfibData.add(afibBuffer[i]); }
+        
         String jsonString;
         serializeJson(doc, jsonString);
+        
         HTTPClient http;
-        http.begin(url);
+        http.begin(client, url);
         http.addHeader("Content-Type", "application/json");
-        http.setTimeout(10000);
+
+        Serial.println("[HTTP] Mengirim data ke server...");
         int httpCode = http.POST(jsonString);
+
         if (httpCode > 0) {
-            String response = http.getString();
-            Serial.print("[WIFI-SERVER] Balasan: ");
-            Serial.println(response);
+            Serial.printf("[WIFI-SERVER] Data berhasil dikirim (Kode: %d)\n", httpCode);
+
+            if (httpCode == 200) { // 200 OK
+                String response = http.getString();
+                Serial.printf("[WIFI-SERVER] Balasan diterima: %s\n", response.c_str());
+
+                // Parse balasan JSON dari server
+                JsonDocument docResponse;
+                DeserializationError error = deserializeJson(docResponse, response);
+
+                if (error) {
+                    Serial.print(F("[JSON-ERROR] Gagal parse balasan: "));
+                    Serial.println(error.c_str());
+                } else if (!docResponse["label"].isNull()) {
+                    const char* label = docResponse["label"];
+                    Serial.printf("[ANALYSIS] Hasil deteksi: %s\n", label);
+                    // Di sini lo bisa tambahin logic, misal kirim label ini ke HP via BLE
+                    // (Butuh characteristic BLE baru untuk label)
+                } else {
+                    Serial.println("[WIFI-SERVER] Balasan diterima, tapi format JSON tidak ada 'label'.");
+                }
+            }
         } else {
             Serial.print("[WIFI-ERROR] Gagal kirim data: ");
             Serial.println(http.errorToString(httpCode));
@@ -128,7 +177,8 @@ void sensorWakeUp() {
         digitalWrite(SDN_PIN, HIGH);
         isSensorActive = true;
         beatFilter->reset();
-        afibFilter->reset();
+        dcBlockerW = 0.0;
+        dcBlockerX = 0.0; 
         bufferIndex = 0;
         lastActivityTime = millis();
     }
@@ -143,7 +193,7 @@ void handleFactoryReset() {
     }
     if (!longPressTriggered && (millis() - buttonPressStartTime > longPressDuration)) {
       Serial.println("\n[RESET] Melakukan factory reset...");
-      WiFi.disconnect(true, true); // Menghapus kredensial Wi-Fi
+      WiFi.disconnect(true, true);
       Serial.println("[RESET] Kredensial Wi-Fi dihapus. Perangkat akan restart.");
       delay(1000);
       ESP.restart();
@@ -156,3 +206,5 @@ void handleFactoryReset() {
     }
   }
 }
+
+
