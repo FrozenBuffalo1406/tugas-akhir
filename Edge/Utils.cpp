@@ -21,7 +21,7 @@ extern unsigned long buttonPressStartTime;
 extern bool longPressTriggered;
 extern float dcBlockerW;
 extern float dcBlockerX;
-extern WiFiClientSecure client; 
+extern WiFiClientSecure client;
 
 // --- Implementasi Fungsi ---
 String getDeviceIdentity() {
