@@ -8,11 +8,15 @@ from datetime import datetime
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
+from flask_bcrypt import Bcrypt
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager
+from flask_socketio import SocketIO, emit
 from tensorflow import keras
 from keras import layers
 from tensorflow.keras.saving import register_keras_serializable
 import tensorflow as tf
 from keras.layers import Layer
+
 
 # costum attention layer due to model training & saving
 @tf.keras.saving.register_keras_serializable()
@@ -128,12 +132,19 @@ def load_all_models():
         # sys.exit(1)
     app.logger.info("="*50)
 
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(128), nullable=False)
+    role = db.Column(db.String(20), nullable=False, default='pasien') # 'pasien' atau 'kerabat'
+    devices = db.relationship('Device', backref='owner', lazy=True)
+
 # 4. table database models
 class Device(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     mac_address = db.Column(db.String(17), unique=True, nullable=False)
     device_id_str = db.Column(db.String(80), unique=True, nullable=False)
-    user_id = db.Column(db.String(80), nullable=True, default='default_user')
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     readings = db.relationship('ECGReading', backref='device', lazy=True, cascade="all, delete-orphan")
 
@@ -168,23 +179,60 @@ def preprocess_input(data: list, target_length: int = 1024):
 def index():
     return jsonify({"message": "Server Analisis ECG berjalan!", "model_loaded": (classification_model is not None)})
 
+@app.route('/api/auth/register', methods=['POST'])
+def register_user():
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
+    role = data.get('role', 'pasien') # Default 'pasien', bisa di-set 'kerabat'
+    if not email or not password: return jsonify({"error": "Email dan password dibutuhkan"}), 400
+    if User.query.filter_by(email=email).first(): return jsonify({"error": "Email sudah terdaftar"}), 409
+    
+    hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+    new_user = User(email=email, password_hash=hashed_password, role=role)
+    db.session.add(new_user)
+    db.session.commit()
+    app.logger.info(f"User baru terdaftar: {email} (Role: {role})")
+    return jsonify({"message": f"User {email} berhasil dibuat"}), 201
+
+@app.route('/api/auth/login', methods=['POST'])
+def login_user():
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
+    if not email or not password: return jsonify({"error": "Email dan password dibutuhkan"}), 400
+
+    user = User.query.filter_by(email=email).first()
+    if user and bcrypt.check_password_hash(user.password_hash, password):
+        access_token = create_access_token(identity=user.id)
+        app.logger.info(f"User login berhasil: {email}")
+        return jsonify(access_token=access_token, user_id=user.id, role=user.role)
+    app.logger.warning(f"Login gagal untuk: {email}")
+    return jsonify({"error": "Email atau password salah"}), 401
+
 @app.route('/api/register-device', methods=['POST'])
 def register_device():
+    """ 
+    Endpoint 'kelahiran' device. Dipanggil ESP32.
+    Hanya mendaftarkan device ke sistem, tanpa pemilik (user_id = NULL).
+    """
     data = request.get_json()
     mac = data.get('mac_address')
     if not mac: return jsonify({"error": "'mac_address' dibutuhkan"}), 400
 
     device = Device.query.filter_by(mac_address=mac).first()
     if device:
-        app.logger.info(f"Perangkat {mac} sudah terdaftar. Mengembalikan ID: {device.device_id_str}")
+        # Device udah pernah daftar, kirim balik ID-nya
+        app.logger.info(f"Device {mac} sudah terdaftar. Mengembalikan ID: {device.device_id_str}")
         return jsonify({"device_id": device.device_id_str}), 200
     else:
+        # Device baru, buat ID unik dan daftarkan (user_id = None)
         count = Device.query.count()
         new_device_id = f"ECG_DEV_{count + 1:03d}"
-        new_device = Device(mac_address=mac, device_id_str=new_device_id)
+        new_device = Device(mac_address=mac, device_id_str=new_device_id, user_id=None)
         db.session.add(new_device)
         db.session.commit()
-        app.logger.info(f"Perangkat baru {mac} didaftarkan dengan ID: {new_device_id}")
+        app.logger.info(f"Device baru {mac} didaftarkan dengan ID {new_device_id} (tanpa pemilik).")
         return jsonify({"device_id": new_device_id}), 201
 
 @app.route('/api/analyze-ecg', methods=['POST'])
@@ -252,6 +300,90 @@ def analyze_ecg():
         db.session.rollback()
         app.logger.error(f"ERROR saat memproses data dari {device_id_str}: {e}", exc_info=True)
         return jsonify({"error": f"Kesalahan internal: {str(e)}"}), 500
+
+@app.route('/api/readings/<string:device_id_str>', methods=['GET'])
+@jwt_required()
+def get_readings_for_device(device_id_str):
+    """
+    Mengembalikan riwayat data dari sebuah device.
+    TODO: Tambahkan logika otorisasi (cek kerabat) di sini.
+    """
+    current_user_id = get_jwt_identity()
+    
+    # Cek keamanan dasar: pastikan device ini milik si user
+    device = Device.query.filter_by(device_id_str=device_id_str, user_id=current_user_id).first()
+    
+    # TODO: Tambahkan pengecekan: "ATAU user ini adalah KERABAT yang boleh liat device ini"
+    
+    if not device:
+        app.logger.warning(f"User {current_user_id} mencoba akses device {device_id_str} yang bukan miliknya.")
+        return jsonify({"error": f"Device '{device_id_str}' tidak ditemukan atau bukan milik Anda."}), 404
+    
+    readings = ECGReading.query.filter_by(device_id=device.id).order_by(ECGReading.timestamp.desc()).limit(100).all()
+    app.logger.info(f"User {current_user_id} mengambil {len(readings)} data dari device {device_id_str}.")
+    return jsonify([
+        {'id': r.id, 'timestamp': r.timestamp.isoformat(), 'prediction': r.prediction} 
+        for r in readings
+    ])
+
+@app.route('/api/claim-device', methods=['POST'])
+@jwt_required() # <-- Harus login
+def claim_device():
+    """ 
+    Endpoint 'adopsi' device. Dipanggil Mobile App.
+    Mengikat device (via mac & device_id) ke user yang sedang login.
+    """
+    current_user_id = get_jwt_identity()
+    data = request.get_json()
+    mac = data.get('mac_address')
+    device_id_str = data.get('device_id_str')
+
+    if not mac or not device_id_str:
+        return jsonify({"error": "'mac_address' dan 'device_id_str' dibutuhkan"}), 400
+
+    # Cari device berdasarkan MAC dan ID-nya
+    device = Device.query.filter_by(mac_address=mac, device_id_str=device_id_str).first()
+
+    if not device:
+        return jsonify({"error": "Device tidak ditemukan. Pastikan MAC Address dan Device ID benar."}), 404
+    
+    if device.user_id is not None:
+        if device.user_id == current_user_id:
+            return jsonify({"message": "Device ini sudah menjadi milik Anda."}), 200
+        else:
+            return jsonify({"error": "Device ini sudah dimiliki oleh akun lain."}), 409 # 409 Conflict
+
+    # Jika device.user_id adalah None (yatim piatu), klaim sekarang!
+    device.user_id = current_user_id
+    db.session.commit()
+    app.logger.info(f"User {current_user_id} berhasil mengklaim device {device_id_str} ({mac})")
+    return jsonify({"message": f"Device {device_id_str} berhasil diklaim."}), 200
+
+@app.route('/api/unclaim-device', methods=['POST'])
+@jwt_required() # <-- Harus login
+def unclaim_device():
+    """ 
+    Endpoint 'pencabutan'. Dipanggil Mobile App.
+    Melepaskan ikatan user dari device.
+    """
+    current_user_id = get_jwt_identity()
+    data = request.get_json()
+    device_id_str = data.get('device_id_str')
+    if not device_id_str: return jsonify({"error": "'device_id_str' dibutuhkan"}), 400
+
+    device = Device.query.filter_by(device_id_str=device_id_str).first()
+
+    if not device:
+        return jsonify({"error": "Device tidak ditemukan."}), 404
+    
+    if device.user_id != current_user_id:
+        return jsonify({"error": "Anda tidak bisa melepaskan device yang bukan milik Anda."}), 403 # 403 Forbidden
+    
+    # Lepaskan kepemilikan
+    device.user_id = None
+    db.session.commit()
+    app.logger.info(f"User {current_user_id} melepaskan kepemilikan device {device_id_str}.")
+    return jsonify({"message": f"Kepemilikan device {device_id_str} berhasil dilepaskan."}), 200
 
 # 7. app management commands
 @app.cli.command("init-db")
