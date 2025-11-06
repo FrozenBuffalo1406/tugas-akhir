@@ -5,7 +5,6 @@
 #include <BLEServer.h>
 
 String getTimestamp();
-void setupOperationalBLE(BLEServer* &pServer, BLECharacteristic* &pCharacteristic, BLEServerCallbacks* callbacks);
 bool isSignalValid(int loPlusPin, int loMinusPin);
 String getDeviceIdentity(); 
 void sendDataToServer(const char* url, const char* deviceId, const char* timestamp, float* beatBuffer, int length);

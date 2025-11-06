@@ -52,34 +52,11 @@ String getDeviceIdentity() {
     return "";
 }
 
-
-void setupOperationalBLE(BLEServer* &pServer, BLECharacteristic* &pCharacteristic, BLEServerCallbacks* callbacks) {
-    String mac = WiFi.macAddress();
-    String macSuffix = mac.substring(12);
-    macSuffix.replace(":", "");
-    String deviceName = "ECG_Monitor_" + macSuffix;
-    BLEDevice::init(deviceName.c_str());
-    pServer = BLEDevice::createServer();
-    pServer->setCallbacks(callbacks);
-    BLEService *pService = pServer->createService(OP_SERVICE_UUID);
-    pCharacteristic = pService->createCharacteristic(
-                        ECG_CHARACTERISTIC_UUID,
-                        BLECharacteristic::PROPERTY_NOTIFY);
-    pCharacteristic->addDescriptor(new BLE2902());
-    pService->start();
-    BLEDevice::getAdvertising()->addServiceUUID(OP_SERVICE_UUID);
-    BLEDevice::startAdvertising();
-    Serial.println("[BLE] Mode Operasional Aktif. Menunggu koneksi...");
-}
-
 bool isSignalValid(int loPlusPin, int loMinusPin) {
     return (digitalRead(loPlusPin) == LOW && digitalRead(loMinusPin) == LOW);
 }
 
 String getTimestamp() {
-    // --- [MODIFIKASI] Inisialisasi waktu dipindah ke sini ---
-    // 'static bool' bikin variabel ini cuma di-set sekali (false) pas program baru nyala.
-    // Pas 'getTimestamp()' dipanggil lagi, nilainya tetep 'true'.
     static bool timeInitialized = false;
     struct tm timeinfo;
     
@@ -93,7 +70,7 @@ String getTimestamp() {
         } else {
             Serial.println("[NTP-WARNING] Sinkronisasi awal belum selesai, akan dicoba di background.");
         }
-        timeInitialized = true; // Tandai sudah inisiasi
+        timeInitialized = true;
     }
     
     if (!getLocalTime(&timeinfo)) {
@@ -111,7 +88,7 @@ void sendDataToServer(const char* url, const char* deviceId, const char* timesta
         DynamicJsonDocument doc(10000);
 
         if (doc.isNull()) {
-            Serial.println("[FATAL] Gagal alokasi JSON di PSRAM!");
+            Serial.println("[FATAL] Gagal alokasi JSON Serialization");
             return;
         }
 

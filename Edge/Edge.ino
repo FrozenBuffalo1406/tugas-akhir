@@ -81,13 +81,19 @@ void setup() {
         }
         if (confirmed) {Serial.println("\n[RESET] Konfirmasi diterima. Menghapus semua kredensial Wi-Fi...");WiFi.disconnect(true, true);delay(1000);ESP.restart();}
     }
-
     beatFilter = new ButterworthFilter(b_beat, a_beat, FILTER_ORDER);
 
     pinMode(LO_PLUS_PIN, INPUT);
     pinMode(LO_MINUS_PIN, INPUT);
     pinMode(SDN_PIN, OUTPUT);
     digitalWrite(SDN_PIN, HIGH);
+
+    ecgBeatBuffer = (float*) malloc(SIGNAL_LENGTH * sizeof(float));
+    if (ecgBeatBuffer == NULL) {
+        Serial.println("[FATAL] Gagal alokasi memori buffer! Program berhenti.");
+        while(true);
+    }
+    Serial.println("[INFO] Memori buffer berhasil dialokasi.");
 
     WiFi.mode(WIFI_STA);
     WiFi.begin();
@@ -142,11 +148,9 @@ void setup() {
         Serial.printf("[INFO] Perangkat diidentifikasi sebagai: %s\n", DEVICE_ID.c_str());
 
         Serial.println("[INFO] Memulai sinkronisasi waktu awal (via getTimestamp)...");
-        String initialTime = getTimestamp(); // Panggil sekali untuk trigger inisialisasi
+        String initialTime = getTimestamp();
         Serial.printf("[INFO] Waktu inisiasi: %s\n", initialTime.c_str());
 
-        // Setup BLE Operasional HANYA jika sudah di mode operasional
-        setupOperationalBLE(pServer, pEcgCharacteristic, new MyServerCallbacks());
         lastActivityTime = millis();
         Serial.println("\n[INFO] Setup selesai. Memulai loop utama...");
     }
@@ -177,10 +181,11 @@ void loop() {
 
                     float filteredBeat = beatFilter->update(dcBlockedValue); // Filter sinyal yang sudah bersih
 
-                    Serial.printf("Raw: %.0f, DC_Blocked: %.2f, Filtered: %.2f\n", rawValue, dcBlockedValue, filteredBeat);
-
-                    ecgBeatBuffer[bufferIndex] = filteredBeat;
+                    // Serial.printf("Raw: %.0f, DC_Blocked: %.2f, Filtered: %.2f\n", rawValue, dcBlockedValue, filteredBeat);
+                    Serial.println(filteredBeat);
                     
+                    ecgBeatBuffer[bufferIndex] = filteredBeat;
+
                     if (deviceConnected) {
                         pEcgCharacteristic->setValue((uint8_t*)&filteredBeat, 4);
                         pEcgCharacteristic->notify();
@@ -194,9 +199,14 @@ void loop() {
         
         if (bufferIndex >= SIGNAL_LENGTH) {
             String timestamp = getTimestamp();
-            String serverEndpoint = String(SERVER_ADDRESS) + "/api/analyze-ecg";
-            sendDataToServer(serverEndpoint.c_str(), DEVICE_ID.c_str(), timestamp.c_str(), ecgBeatBuffer, SIGNAL_LENGTH);
-            
+            if (timestamp != "0000-00-00T00:00:00+07:00") { // Cek jika waktu valid
+                String serverEndpoint = String(SERVER_ADDRESS) + "/api/analyze-ecg";
+                // [CLEANUP] Panggilan disederhanakan
+                sendDataToServer(serverEndpoint.c_str(), DEVICE_ID.c_str(), timestamp.c_str(), ecgBeatBuffer, SIGNAL_LENGTH);
+            } else {
+                Serial.println("[SKIP] Data tidak dikirim, waktu NTP belum sinkron.");
+            }
+
             bufferIndex = 0;
             beatFilter->reset();
             Serial.println("\n[INFO] Buffer direset.");
@@ -208,6 +218,5 @@ void loop() {
     if (isSensorActive && !deviceConnected && (millis() - lastActivityTime > INACTIVITY_TIMEOUT_MS)) {
         sensorSleep();
     }
-    Serial.print("\033[2J");
 }
 
