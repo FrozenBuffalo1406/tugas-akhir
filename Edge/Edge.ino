@@ -43,7 +43,6 @@ unsigned long lastDisplayUpdate = 0;
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1); // -1 = no reset pin
 QRCode qrcode;
 
-void SysProvEvent(arduino_event_t *sys_event);
 void drawQRCode(String text, int startY);
 void updateOLEDPlotter(float value);
 void updateOLEDStatus();
@@ -93,7 +92,6 @@ void setup() {
 
     WiFi.mode(WIFI_STA);
     WiFi.begin();
-    WiFi.onEvent(SysProvEvent);
     
     Serial.println("Mencoba menghubungkan ke Wi-Fi...");
     int wifi_retries = 20;
@@ -131,10 +129,7 @@ void setup() {
         Serial.printf("[PROV] QR Payload: %s\n", provPayload.c_str());
 
         display.clearDisplay();
-        display.setTextSize(1);
-        display.setCursor(0,0);
-        display.println("Scan QR for Wi-Fi");
-        drawQRCode(provPayload, 18); 
+        drawQRCode(provPayload, 3); 
         display.display();
 
         while (WiFi.status() != WL_CONNECTED) { delay(1000); }
@@ -153,6 +148,19 @@ void setup() {
         provisioningDone = true; // Tandai provisioning selesai
         currentStatus = "Connected";
 
+        display.clearDisplay(); // Bersihin sisa "Booting..."
+        display.fillRect(0, 0, SCREEN_WIDTH, PLOT_HEIGHT, SSD1306_BLACK); 
+        display.display(); // 3. Kirim buffer kosong ini ke layar
+        
+        // Tampilkan IP biar keren
+        String ip = WiFi.localIP().toString();
+        Serial.println("[WIFI] IP: " + ip);
+        display.println(ip);
+        
+        display.display();
+        delay(2000); // Kasih jeda biar kebaca
+        display.clearDisplay();
+
         DEVICE_ID = getDeviceIdentity();
         if (DEVICE_ID == "") {
             Serial.println("[FATAL] Gagal mendapatkan Device ID dari server. Program berhenti.");
@@ -170,8 +178,6 @@ void setup() {
 void loop() {
     handleFactoryReset();
     if (!provisioningDone) {
-        // Loop kosong saat menunggu provisioning
-        // (Layar OLED sudah menampilkan QR dari setup)
         return; 
     }
     
@@ -196,18 +202,32 @@ void loop() {
                     dcBlockerW = dcBlockerX;
 
                     float filteredBeat = beatFilter->update(dcBlockedValue);
+                    
                     updateOLEDPlotter(filteredBeat);
 
-                    // Serial.printf("Raw: %.0f, DC_Blocked: %.2f, Filtered: %.2f\n", rawValue, dcBlockedValue, filteredBeat);
-                    Serial.println(filteredBeat);
+                    Serial.println(rawValue);
                     
                     ecgBeatBuffer[bufferIndex] = filteredBeat;
 
                     bufferIndex++;
                 }
             } else {
-                 if (!deviceConnected) Serial.println("[WARNING] Elektroda terlepas!");
-                 if (!deviceConnected) currentStatus = "Electrode Off";
+                if(!deviceConnected) {
+                Serial.println("[WARNING] Elektroda terlepas!");
+                currentStatus = "Electrode Off";
+                }
+
+                if (bufferIndex < SIGNAL_LENGTH) {
+                    updateOLEDPlotter(0.0); // Gambar garis lurus (nilai 0)
+                    ecgBeatBuffer[bufferIndex] = 0.0; // Isi buffer dgn 0
+                    
+                    if (deviceConnected) {
+                        float zeroVal = 0.0;
+                        pEcgCharacteristic->setValue((uint8_t*)&zeroVal, 4);
+                        pEcgCharacteristic->notify();
+                    }
+                    bufferIndex++;
+                }
             }
         }
         
@@ -230,8 +250,6 @@ void loop() {
             lastPlotY = -1;
             display.fillRect(0, 0, SCREEN_WIDTH, PLOT_HEIGHT, SSD1306_BLACK); // Hanya bersihkan area plotter
 
-            Serial.println("\n[INFO] Buffer direset.");
-            delay(2000);
         }
     }
     
@@ -246,44 +264,9 @@ void loop() {
     }
 }
 
-
-void SysProvEvent(arduino_event_t *sys_event) {
-  switch (sys_event->event_id) {
-    case ARDUINO_EVENT_WIFI_STA_GOT_IP:
-      Serial.print("\nConnected IP address : ");
-      Serial.println(IPAddress(sys_event->event_info.got_ip.ip_info.ip.addr));
-      break;
-    case ARDUINO_EVENT_WIFI_STA_DISCONNECTED: Serial.println("\nDisconnected. Connecting to the AP again... "); break;
-    case ARDUINO_EVENT_PROV_START:            Serial.println("\nProvisioning started\nGive Credentials of your access point using smartphone app"); break;
-    case ARDUINO_EVENT_PROV_CRED_RECV:
-    {
-      Serial.println("\nReceived Wi-Fi credentials");
-      Serial.print("\tSSID : ");
-      Serial.println((const char *)sys_event->event_info.prov_cred_recv.ssid);
-      Serial.print("\tPassword : ");
-      Serial.println((char const *)sys_event->event_info.prov_cred_recv.password);
-      break;
-    }
-    case ARDUINO_EVENT_PROV_CRED_FAIL:
-    {
-      Serial.println("\nProvisioning failed!\nPlease reset to factory and retry provisioning\n");
-      if (sys_event->event_info.prov_fail_reason == NETWORK_PROV_WIFI_STA_AUTH_ERROR) {
-        Serial.println("\nWi-Fi AP password incorrect");
-      } else {
-        Serial.println("\nWi-Fi AP not found....Add API \" nvs_flash_erase() \" before beginProvision()");
-      }
-      break;
-    }
-    case ARDUINO_EVENT_PROV_CRED_SUCCESS: Serial.println("\nProvisioning Successful"); break;
-    case ARDUINO_EVENT_PROV_END:          Serial.println("\nProvisioning Ends"); break;
-    default:                              break;
-  }
-}
-
 void drawQRCode(String text, int startY) {
-  // Buat data QR code
   uint8_t qrcodeData[qrcode_getBufferSize(3)]; // Version 3
-  qrcode_init_text(&qrcode, qrcodeData, 3, ECC_LOW, text.c_str());
+  qrcode_initText(&qrcode, qrcodeData, 3, ECC_LOW, text.c_str());
 
   int moduleSize = 2; // Ukuran tiap kotak QR (dalam pixel)
   int qrSize = qrcode.size * moduleSize;
@@ -326,15 +309,16 @@ void updateOLEDPlotter(float value) {
 
 void updateOLEDStatus() {
     int statusBarY = PLOT_HEIGHT + 2; // Posisi Y di bawah plotter
+    int statusBarHeight = 16;
 
-    // Bersihkan area status
-    display.fillRect(0, statusBarY, SCREEN_WIDTH, SCREEN_HEIGHT - statusBarY, SSD1306_BLACK);
-    
+    display.fillRect(0, statusBarY, SCREEN_WIDTH, statusBarHeight, SSD1306_BLACK);
     display.setTextSize(1);
-    display.setCursor(0, statusBarY);
-    display.print("Status: ");
-    display.setTextSize(2); // Statusnya dibikin gede
-    display.setCursor(0, statusBarY + 10);
-    display.print(currentStatus); 
+    display.setCursor(0, statusBarY); // Taruh kursor di kiri
+    String statusText = "Status:" + currentStatus;
+    if (statusText.length() > 10) { 
+        statusText = statusText.substring(0, 10) + "..";
+    }
+    
+    display.print(statusText);
 }
 

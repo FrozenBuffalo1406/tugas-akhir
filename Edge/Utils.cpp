@@ -86,7 +86,7 @@ String getTimestamp() {
 
 void sendDataToServer(const char* url, const char* deviceId, const char* timestamp, float* beatBuffer, int length) {
     if (WiFi.status() == WL_CONNECTED) {
-        DynamicJsonDocument doc(10000);
+        JsonDocument doc;
 
         if (doc.isNull()) {
             Serial.println("[FATAL] Gagal alokasi JSON Serialization");

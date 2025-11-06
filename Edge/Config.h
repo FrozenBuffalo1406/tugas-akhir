@@ -14,15 +14,16 @@ static const int FACTORY_RESET_PIN = 0; // GPIO 0 adalah pin tombol "BOOT"
 // --- display ---
 static const int OLED_SDA_PIN = 21; // Ganti sesuai pinout lo
 static const int OLED_SCL_PIN = 22; // Ganti sesuai pinout lo
-static const int BUTTON_1_PIN = 32; // Ganti sesuai pinout lo
-static const int BUTTON_2_PIN = 33; // Ganti sesuai pinout lo
-
 static const int SCREEN_WIDTH = 128;
 static const int SCREEN_HEIGHT = 64;
 static const int PLOT_HEIGHT = 48;
 
+// --- buttons ---
+static const int BUTTON_1_PIN = 32; // Ganti sesuai pinout lo
+static const int BUTTON_2_PIN = 33; // Ganti sesuai pinout lo
+
 // --- Konfigurasi Sinyal ---
-static const int SIGNAL_LENGTH = 1024; 
+static const int SIGNAL_LENGTH = 256; 
 static const int SAMPLING_RATE = 360;
 
 // time config
