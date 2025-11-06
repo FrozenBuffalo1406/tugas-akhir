@@ -22,6 +22,7 @@ extern bool longPressTriggered;
 extern float dcBlockerW;
 extern float dcBlockerX;
 extern WiFiClientSecure client;
+String currentStatus = "Initializing...";
 
 // --- Implementasi Fungsi ---
 String getDeviceIdentity() {
@@ -121,22 +122,25 @@ void sendDataToServer(const char* url, const char* deviceId, const char* timesta
                 if (error) {
                     Serial.print(F("[JSON-ERROR] Gagal parse balasan: "));
                     Serial.println(error.c_str());
+                    currentStatus = "Parse Error";
                 } else if (!docResponse["label"].isNull()) {
                     const char* label = docResponse["label"];
                     Serial.printf("[ANALYSIS] Hasil deteksi: %s\n", label);
-                    // Di sini lo bisa tambahin logic, misal kirim label ini ke HP via BLE
-                    // (Butuh characteristic BLE baru untuk label)
+                    currentStatus = String(label);
                 } else {
                     Serial.println("[WIFI-SERVER] Balasan diterima, tapi format JSON tidak ada 'label'.");
+                    currentStatus = "No Label";
                 }
             }
         } else {
             Serial.print("[WIFI-ERROR] Gagal kirim data: ");
             Serial.println(http.errorToString(httpCode));
+            currentStatus = "Send Error";
         }
         http.end();
     } else {
         Serial.println("[WIFI-ERROR] Koneksi putus, data tidak terkirim.");
+        currentStatus = "No WiFi";
     }
 }
 
