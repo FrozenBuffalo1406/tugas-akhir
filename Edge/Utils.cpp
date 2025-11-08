@@ -2,8 +2,6 @@
 #include "config.h"
 #include <WiFi.h>
 #include <ArduinoJson.h>
-#include <BLEDevice.h>
-#include <BLE2902.h>
 #include "time.h"
 #include <Preferences.h>
 #include "butterworthfilter.h"
@@ -21,6 +19,7 @@ extern unsigned long buttonPressStartTime;
 extern bool longPressTriggered;
 extern float dcBlockerW;
 extern float dcBlockerX;
+extern String currentStatus;
 extern WiFiClientSecure client;
 String currentStatus = "Initializing...";
 
@@ -32,9 +31,10 @@ String getDeviceIdentity() {
     doc["mac_address"] = mac.c_str();
     String payload;
     serializeJson(doc, payload);
+    Serial.printf("Mac Address: %s\n", mac.c_str());
 
     HTTPClient http;
-    String registerUrl = String(SERVER_ADDRESS) + "/api/register-device";
+    String registerUrl = String(SERVER_ADDRESS) + "/register-device";
 
     http.begin(client, registerUrl);
     http.addHeader("Content-Type", "application/json");
@@ -85,63 +85,77 @@ String getTimestamp() {
 }
 
 void sendDataToServer(const char* url, const char* deviceId, const char* timestamp, float* beatBuffer, int length) {
-    if (WiFi.status() == WL_CONNECTED) {
-        JsonDocument doc;
-
-        if (doc.isNull()) {
-            Serial.println("[FATAL] Gagal alokasi JSON Serialization");
-            return;
-        }
-
-        doc["device_id"] = deviceId;
-        doc["timestamp"] = timestamp;
-        JsonArray ecgBeatData = doc["ecg_beat_data"].to<JsonArray>();
-        for (int i = 0; i < length; i++) { ecgBeatData.add(beatBuffer[i]); }
-        
-        String jsonString;
-        serializeJson(doc, jsonString);
-        
-        HTTPClient http;
-        http.begin(client, url);
-        http.addHeader("Content-Type", "application/json");
-
-        Serial.println("[HTTP] Mengirim data ke server...");
-        int httpCode = http.POST(jsonString);
-
-        if (httpCode > 0) {
-            Serial.printf("[WIFI-SERVER] Data berhasil dikirim (Kode: %d)\n", httpCode);
-
-            if (httpCode == 200) { // 200 OK
-                String response = http.getString();
-                Serial.printf("[WIFI-SERVER] Balasan diterima: %s\n", response.c_str());
-
-                // Parse balasan JSON dari server
-                JsonDocument docResponse;
-                DeserializationError error = deserializeJson(docResponse, response);
-
-                if (error) {
-                    Serial.print(F("[JSON-ERROR] Gagal parse balasan: "));
-                    Serial.println(error.c_str());
-                    currentStatus = "Parse Error";
-                } else if (!docResponse["label"].isNull()) {
-                    const char* label = docResponse["label"];
-                    Serial.printf("[ANALYSIS] Hasil deteksi: %s\n", label);
-                    currentStatus = String(label);
-                } else {
-                    Serial.println("[WIFI-SERVER] Balasan diterima, tapi format JSON tidak ada 'label'.");
-                    currentStatus = "No Label";
-                }
-            }
-        } else {
-            Serial.print("[WIFI-ERROR] Gagal kirim data: ");
-            Serial.println(http.errorToString(httpCode));
-            currentStatus = "Send Error";
-        }
-        http.end();
-    } else {
+    
+    if (WiFi.status() != WL_CONNECTED) {
         Serial.println("[WIFI-ERROR] Koneksi putus, data tidak terkirim.");
         currentStatus = "No WiFi";
+        return;
     }
+
+    JsonDocument doc;
+
+    doc["device_id"] = deviceId;
+    doc["timestamp"] = timestamp;
+    JsonArray ecgBeatData = doc["ecg_beat_data"].to<JsonArray>();
+    for (int i = 0; i < length; i++) { 
+        ecgBeatData.add(beatBuffer[i]); 
+    }
+
+    String jsonString;
+    serializeJson(doc, jsonString);
+
+    // Cek kalo gagal (RAM masih gak cukup)
+    if (jsonString.length() == 0 && doc.overflowed()) {
+        Serial.println("[FATAL] Gagal alokasi JSON! RAM masih penuh.");
+        currentStatus = "JSON Alloc Fail";
+        return; 
+    }
+    HTTPClient http;
+    http.begin(client, url);
+    http.addHeader("Content-Type", "application/json");
+    http.setTimeout(20000); // Timeout 20 detik
+
+    Serial.println("[HTTP] Mengirim data ke server (Non-Streaming)...");
+
+    // 4. Kirim semua sekaligus. Fungsi POST() ini MENGEMBALIKAN HTTP Code.
+    int httpCode = http.POST(jsonString);
+
+    if (httpCode > 0) {
+        Serial.printf("[WIFI-SERVER] Data berhasil dikirim (Kode: %d)\n", httpCode);
+        String response = http.getString();
+        Serial.printf("[WIFI-SERVER] Balasan diterima: %s\n", response.c_str());
+
+        // Parse balasan
+        JsonDocument docResponse;
+        DeserializationError error = deserializeJson(docResponse, response);
+
+        if (error) {
+            Serial.print(F("[JSON-ERROR] Gagal parse balasan: "));
+            Serial.println(error.c_str());
+            currentStatus = "Parse Error";
+        } 
+        // Cek "prediction"
+        else if (!docResponse["prediction"].isNull()) { 
+            const char* prediction = docResponse["prediction"];
+            
+            // --- [FIX TYPO] ---
+            // 'prediction' itu udah char*, gausah pake .c_str()
+            Serial.printf("[ANALYSIS] Hasil deteksi: %s\n", prediction); 
+            
+            currentStatus = String(prediction);
+        } else {
+            Serial.println("[WIFI-SERVER] Balasan OK, tapi format JSON tidak ada 'prediction'.");
+            currentStatus = "No Label";
+        }
+        
+    } else {
+        Serial.print("[WIFI-ERROR] Gagal kirim data: ");
+        Serial.println(http.errorToString(httpCode));
+        currentStatus = "Send Error";
+    }
+
+    http.end();
+    
 }
 
 void sensorSleep() {

@@ -19,9 +19,6 @@ String dynamicServiceName;
 String DEVICE_ID = "";
 WiFiClientSecure client;
 ButterworthFilter* beatFilter = NULL;
-BLEServer* pServer = NULL;
-BLECharacteristic* pEcgCharacteristic = NULL;
-bool deviceConnected = false;
 float* ecgBeatBuffer = NULL; 
 
 int bufferIndex = 0;
@@ -180,6 +177,12 @@ void loop() {
     if (!provisioningDone) {
         return; 
     }
+
+    if (millis() - lastDisplayUpdate > 50) {
+        lastDisplayUpdate = millis();
+        updateOLEDStatus(); // Update teks status di buffer
+        display.display(); // Kirim buffer ke layar
+    }
     
     if (isSensorActive) {
         if (millis() - lastSampleTime >= sampleInterval) {
@@ -189,7 +192,7 @@ void loop() {
             if (signalValid && !isSensorActive) {
                 sensorWakeUp();
             }
-            if (signalValid || deviceConnected) {
+            if (signalValid) {
                 lastActivityTime = millis();
             }
 
@@ -212,7 +215,7 @@ void loop() {
                     bufferIndex++;
                 }
             } else {
-                if(!deviceConnected) {
+                if(!signalValid) {
                 Serial.println("[WARNING] Elektroda terlepas!");
                 currentStatus = "Electrode Off";
                 }
@@ -221,11 +224,6 @@ void loop() {
                     updateOLEDPlotter(0.0); // Gambar garis lurus (nilai 0)
                     ecgBeatBuffer[bufferIndex] = 0.0; // Isi buffer dgn 0
                     
-                    if (deviceConnected) {
-                        float zeroVal = 0.0;
-                        pEcgCharacteristic->setValue((uint8_t*)&zeroVal, 4);
-                        pEcgCharacteristic->notify();
-                    }
                     bufferIndex++;
                 }
             }
@@ -237,7 +235,7 @@ void loop() {
 
             String timestamp = getTimestamp();
             if (timestamp != "0000-00-00T00:00:00+07:00") { 
-                String serverEndpoint = String(SERVER_ADDRESS) + "/api/analyze-ecg";
+                String serverEndpoint = String(SERVER_ADDRESS) + "/analyze-ecg";
                 sendDataToServer(serverEndpoint.c_str(), DEVICE_ID.c_str(), timestamp.c_str(), ecgBeatBuffer, SIGNAL_LENGTH);
             } else {
                 Serial.println("[SKIP] Data tidak dikirim, waktu NTP belum sinkron.");
@@ -253,14 +251,9 @@ void loop() {
         }
     }
     
-    if (isSensorActive && !deviceConnected && (millis() - lastActivityTime > INACTIVITY_TIMEOUT_MS)) {
+    if (isSensorActive && (millis() - lastActivityTime > INACTIVITY_TIMEOUT_MS)) {
         sensorSleep();
         currentStatus = "Sleeping...";
-    }
-    if (millis() - lastDisplayUpdate > 50) {
-        lastDisplayUpdate = millis();
-        updateOLEDStatus(); // Update teks status di buffer
-        display.display(); // Kirim buffer ke layar
     }
 }
 

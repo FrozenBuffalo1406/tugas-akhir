@@ -236,7 +236,7 @@ def analyze_ecg():
         processed_input_3d, processed_input_1d = preprocess_input(ecg_beat)
         heart_rate_bpm = calculate_heart_rate(processed_input_1d)
         prediction_probabilities = classification_model.predict(processed_input_3d)[0]
-        predicted_index = np.argmax(prediction_probabilities); arrhythmia_classes = ['Normal_Beat', 'Other', 'PVC']
+        predicted_index = np.argmax(prediction_probabilities); arrhythmia_classes = ['Normal', 'Other', 'PVC']
         prediction_result = arrhythmia_classes[predicted_index]
 
         try: parsed_timestamp = datetime.fromisoformat(timestamp_str.replace("+07:00", ""))
