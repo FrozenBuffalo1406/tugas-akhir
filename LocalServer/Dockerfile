@@ -4,7 +4,7 @@ FROM python:3.11-slim
 # [TAMBAHAN] Set ENV PYTHONUNBUFFERED=1 biar log Python langsung keluar
 ENV PYTHONUNBUFFERED=1
 WORKDIR /app
-RUN useradd -m -s /bin/bash ecgAgent
+RUN useradd -m -s /bin/bash pojii
 COPY backend/requirements.txt .
 RUN apt-get update && \
     # Install build-essential
@@ -19,8 +19,8 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 # Copy seluruh folder backend ke kontainer
 COPY ./backend .
-RUN chown -R ecgAgent:ecgAgent /app
-USER ecgAgent
+RUN chown -R pojii:pojii /app
+USER pojii
 # Ekspos port yang akan digunakan Gunicorn di dalam kontainer
 EXPOSE 8000
 # Perintah untuk menjalankan Gunicorn (tetep sama, udah bagus)
