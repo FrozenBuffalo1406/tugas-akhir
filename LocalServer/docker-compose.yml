@@ -9,8 +9,8 @@ services:
     ports:
       - "5000:8000" # Map port 5000 VPS ke port 8000 kontainer
     volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
+      - ./backend/data:/app/data
+      - ./backend/logs:/app/logs
       # Map folder 'model' dari lokal ke kontainer (opsional, jika model sering update)
       # - ./backend/model:/app/model
       - /etc/timezone:/etc/timezone:ro
