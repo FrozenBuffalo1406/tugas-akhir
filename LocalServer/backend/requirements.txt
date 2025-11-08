@@ -5,7 +5,6 @@ Flask-SQLAlchemy
 Flask-Migrate # Untuk manajemen database
 Flask-Bcrypt # Untuk password hashing
 Flask-JWT-Extended # Untuk otentikasi token
-Flask-SocketIO
 scipy
 
 numpy
