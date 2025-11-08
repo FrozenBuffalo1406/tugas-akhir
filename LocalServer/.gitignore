@@ -8,5 +8,6 @@ docker-compose.yml
 backend/__pycache__/
 backend/instance/
 backend/data/
+backend/ecg-api.tar
 backend/logs/
 ecg_data.db
