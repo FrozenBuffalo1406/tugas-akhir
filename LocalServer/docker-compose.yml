@@ -20,5 +20,4 @@ services:
       - DATABASE_URL=sqlite:////app/data/ecg_data.db # Path DB di dalam kontainer
       - TZ=Asia/Jakarta
       # - MODEL_PATH=/app/model/beat_classifier_model_FINAL.keras
-    command: gunicorn --workers 3 --bind 0.0.0.0:8000 --log-level info --access-logfile - --error-logfile - app:app
     restart: always # Otomatis restart jika crash, kecuali dihentikan manual
