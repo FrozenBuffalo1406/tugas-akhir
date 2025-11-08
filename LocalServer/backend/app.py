@@ -109,7 +109,7 @@ def preprocess_input(data: list, target_length: int = 1024):
 def calculate_heart_rate(signal_1d_normalized):
     # ... (Fungsi ini sama, tidak berubah) ...
     try:
-        peaks, _ = find_peaks(signal_1d_normalized, prominence=0.4, distance=0.3 * SAMPLING_RATE)
+        peaks, _ = find_peaks(signal_1d_normalized, prominence=0.6, distance=0.4 * SAMPLING_RATE)
         if len(peaks) < 2: return None 
         rr_intervals_samples = np.diff(peaks); avg_rr_samples = np.mean(rr_intervals_samples)
         bpm = (SAMPLING_RATE * 60) / avg_rr_samples
