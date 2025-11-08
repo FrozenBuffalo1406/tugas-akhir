@@ -24,4 +24,4 @@ USER appuser
 # Ekspos port yang akan digunakan Gunicorn di dalam kontainer
 EXPOSE 8000
 # Perintah untuk menjalankan Gunicorn (tetep sama, udah bagus)
-CMD ["gunicorn", "--workers", "3", "--bind", "0.0.0.0:8000", "--log-level", "info", "--access-logfile", "-", "--error-logfile", "-", "app:app"]
+CMD ["gunicorn", "--workers", "3", "--bind", "0.0.0.0:8000", "--log-level", "info", "--access-logfile", "-", "--error-logfile", "-", "--preload", "app:app"]
