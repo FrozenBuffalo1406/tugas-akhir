@@ -11,7 +11,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager
-# from flask_socketio import SocketIO, emit # <-- DIHAPUS
+import tflite_runtime.interpreter as tflite
 # from tensorflow import keras
 # from keras import layers
 # from tensorflow.keras.saving import register_keras_serializable
