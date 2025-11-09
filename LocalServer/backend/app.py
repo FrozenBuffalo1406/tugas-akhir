@@ -61,7 +61,7 @@ app.logger.info('Aplikasi ECG startup (Mode Ramping, No SocketIO)')
 interpreter = None # Wadah buat TFLite Interpreter
 input_details = None
 output_details = None
-MODEL_FILENAME = 'beat_classifier.tflite' # <-- GANTI NAMA FILE JADI .tflite
+MODEL_FILENAME = 'beat_classifier_model_SMOTE.tflite' # <-- GANTI NAMA FILE JADI .tflite
 MODEL_PATH = os.getenv('MODEL_PATH', os.path.join(basedir, f'model/{MODEL_FILENAME}'))
 
 def load_tflite_model():
