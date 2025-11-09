@@ -7,8 +7,7 @@ Flask-Bcrypt # Untuk password hashing
 Flask-JWT-Extended # Untuk otentikasi token
 scipy
 
-numpy
-# tensorflow==2.18.0
-tflite-runtime
+tensorflow==2.18.0  # <-- WAJIB SAMA KAYAK VERSI TRAINING
+numpy==1.26.4
 
 python-dotenv

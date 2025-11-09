@@ -12,16 +12,12 @@ from flask_migrate import Migrate
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager
 import tflite_runtime.interpreter as tflite
-# from tensorflow import keras
-# from keras import layers
-# from tensorflow.keras.saving import register_keras_serializable
-# import tensorflow as tf
+from tensorflow import keras
+from keras import layers
+import tensorflow as tf
 from dotenv import load_dotenv
 from scipy.signal import find_peaks
 
-# =============================================================================
-# 1. KONFIGURASI APLIKASI & SEMUA LIBRARY
-# =============================================================================
 load_dotenv()
 app = Flask(__name__)
 app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "kunci-rahasia-super-aman-ganti-ini-di-vps")
@@ -53,72 +49,70 @@ app.logger.addHandler(file_handler)
 app.logger.setLevel(logging.INFO)
 app.logger.info('Aplikasi ECG startup (Mode Ramping, No SocketIO)')
 
+@tf.keras.saving.register_keras_serializable()
+class Attention(Layer):
+    """Custom Attention Layer."""
+    def __init__(self, **kwargs):
+        super(Attention, self).__init__(**kwargs)
+        self.W = None
+        self.b = None
+    
+    def build(self, input_shape):
+        if not isinstance(input_shape, tf.TensorShape):
+            input_shape = tf.TensorShape(input_shape)
+        last_dim = input_shape[-1]
+        timesteps = input_shape[1]
+        if last_dim is None or timesteps is None:
+            raise ValueError(f"Dimensi input tidak diketahui: {input_shape}")
 
-# classification_model = None
-# MODEL_FILENAME = 'beat_classifier_model_SMOTE.keras'
-# MODEL_PATH = os.getenv('MODEL_PATH', os.path.join(basedir, f'model/{MODEL_FILENAME}'))
+        self.W = self.add_weight(name="att_weight", shape=(last_dim, 1), initializer="normal", trainable=True)
+        self.b = self.add_weight(name="att_bias", shape=(timesteps, 1), initializer="zeros", trainable=True)
+        super(Attention, self).build(input_shape)
+        app.logger.info("--- Attention build completed. ---")
 
-interpreter = None # Wadah buat TFLite Interpreter
-input_details = None
-output_details = None
-MODEL_FILENAME = 'beat_classifier_model_SMOTE.tflite' # <-- GANTI NAMA FILE JADI .tflite
+    def call(self, x):
+        if self.W is None or self.b is None:
+            raise ValueError("Attention weights not initialized.")
+        et = tf.squeeze(tf.nn.tanh(tf.matmul(x, self.W) + self.b), axis=-1)
+        at = tf.nn.softmax(et)
+        at = tf.expand_dims(at, axis=-1)
+        output = x * at
+        return tf.reduce_sum(output, axis=1)
+
+    def compute_output_shape(self, input_shape):
+        return tf.TensorShape((input_shape[0], input_shape[-1]))
+
+    def get_config(self):
+        return super(Attention, self).get_config()
+
+
+classification_model = None
+MODEL_FILENAME = 'beat_classifier_model_SMOTE.keras'
 MODEL_PATH = os.getenv('MODEL_PATH', os.path.join(basedir, f'model/{MODEL_FILENAME}'))
 
-def load_tflite_model():
-    """ Load model TFLite ke memori """
-    global interpreter, input_details, output_details
+def load_all_models():
+    """ Load model Keras ke memori """
+    global classification_model
     app.logger.info("="*50)
-    app.logger.info(f"Mencoba memuat model TFLite dari: {MODEL_PATH}")
+    app.logger.info(f"Mencoba memuat model Keras dari: {MODEL_PATH}")
     try:
         if not os.path.exists(MODEL_PATH):
-            app.logger.error(f"File model TFLite tidak ditemukan di path: {MODEL_PATH}")
+            app.logger.error(f"File model Keras tidak ditemukan di path: {MODEL_PATH}")
             raise FileNotFoundError(f"File model tidak ditemukan di '{MODEL_PATH}'")
 
-        # 1. Load TFLite Interpreter
-        interpreter = tflite.Interpreter(model_path=MODEL_PATH)
-        # 2. Alokasikan memori
-        interpreter.allocate_tensors()
-        
-        # 3. Dapetin info input & output
-        input_details = interpreter.get_input_details()
-        output_details = interpreter.get_output_details()
+        if Attention is None:
+            raise ImportError("Custom Attention layer tidak bisa diimpor.")
 
-        app.logger.info(f"✅ Model TFLite ('{MODEL_FILENAME}') berhasil dimuat.")
-        app.logger.info(f"Input shape: {input_details[0]['shape']}")
-        app.logger.info(f"Output shape: {output_details[0]['shape']}")
+        # Load model Keras dengan custom object
+        classification_model = keras.models.load_model(
+            MODEL_PATH,
+            custom_objects={'Attention': Attention}
+        )
+        app.logger.info(f"✅ Model Keras ('{MODEL_FILENAME}') berhasil dimuat.")
         
     except Exception as e:
-        app.logger.critical(f"❌ FATAL ERROR: Gagal memuat model TFLite. Error: {e}", exc_info=True)
+        app.logger.critical(f"❌ FATAL ERROR: Gagal memuat model Keras. Error: {e}", exc_info=True)
     app.logger.info("="*50)
-
-# def load_classification_model():
-#     # ... (Fungsi ini sama, tidak berubah) ...
-#     global classification_model; app.logger.info("="*50); app.logger.info(f"Mencoba memuat model dari: {MODEL_PATH}")
-#     try:
-#         if not os.path.exists(MODEL_PATH): raise FileNotFoundError(f"File model tidak ditemukan di '{MODEL_PATH}'")
-#         classification_model = keras.models.load_model(MODEL_PATH, custom_objects={'Attention': Attention})
-#         app.logger.info(f"✅ Model Klasifikasi ('{MODEL_FILENAME}') berhasil dimuat.")
-#     except Exception as e: app.logger.critical(f"❌ FATAL ERROR: Gagal memuat model. Error: {e}", exc_info=True);
-#     app.logger.info("="*50)
-
-def preprocess_input(data: list, target_length: int = 1024):
-    arr = np.array(data, dtype=np.float32);
-    if len(arr) < target_length: padding = np.zeros(target_length - len(arr)); arr = np.concatenate([arr, padding])
-    elif len(arr) > target_length: arr = arr[:target_length]
-    mean = np.mean(arr); std = np.std(arr);
-    if std == 0: std = 1
-    normalized_arr = (arr - mean) / std
-    return normalized_arr.reshape(1, target_length, 1), normalized_arr
-
-def calculate_heart_rate(signal_1d_normalized):
-    try:
-        peaks, _ = find_peaks(signal_1d_normalized, prominence=0.6, distance=0.4 * SAMPLING_RATE)
-        if len(peaks) < 2: return None 
-        rr_intervals_samples = np.diff(peaks); avg_rr_samples = np.mean(rr_intervals_samples)
-        bpm = (SAMPLING_RATE * 60) / avg_rr_samples
-        app.logger.info(f"HR Calc: {len(peaks)} peaks. BPM: {bpm:.2f}")
-        return round(bpm, 2)
-    except Exception as e: app.logger.error(f"HR Calc Error: {e}"); return None
 
 monitoring_relationship = db.Table('monitoring_relationship',
     db.Column('id', db.Integer, primary_key=True),
@@ -127,10 +121,24 @@ monitoring_relationship = db.Table('monitoring_relationship',
     db.UniqueConstraint('monitor_id', 'patient_id', name='_monitor_patient_uc')
 )
 class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True); email = db.Column(db.String(120), unique=True, nullable=False)
-    name = db.Column(db.String(100), nullable=True); password_hash = db.Column(db.String(128), nullable=False)
-    role = db.Column(db.String(20), nullable=False, default='pasien'); devices = db.relationship('Device', backref='owner', lazy=True)
-    monitoring = db.relationship('User', secondary=monitoring_relationship, primaryjoin=(monitoring_relationship.c.monitor_id == id), secondaryjoin=(monitoring_relationship.c.patient_id == id), backref=db.backref('monitored_by', lazy='dynamic'), lazy='dynamic')
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(128), nullable=False)
+    role = db.Column(db.String(20), nullable=False, default='pasien') # 'pasien' atau 'kerabat'
+    devices = db.relationship('Device', backref='owner', lazy=True)
+    
+    # Relasi 'user' ini memantau siapa aja
+    monitoring = db.relationship(
+        'MonitoringRelationship',
+        foreign_keys='MonitoringRelationship.monitor_id',
+        backref='monitor', lazy='dynamic'
+    )
+    # Relasi 'user' ini dipantau oleh siapa aja
+    monitored_by = db.relationship(
+        'MonitoringRelationship',
+        foreign_keys='MonitoringRelationship.patient_id',
+        backref='patient', lazy='dynamic'
+    )
 
 class Device(db.Model):
     id = db.Column(db.Integer, primary_key=True); mac_address = db.Column(db.String(17), unique=True, nullable=False)
@@ -143,6 +151,30 @@ class ECGReading(db.Model):
     prediction = db.Column(db.String(50), nullable=False); heart_rate = db.Column(db.Float, nullable=True)
     probabilities = db.Column(db.JSON, nullable=True); ecg_beat_data = db.Column(db.JSON, nullable=True)
     processed_ecg_data = db.Column(db.JSON, nullable=True); device_id = db.Column(db.Integer, db.ForeignKey('device.id'), nullable=False)
+
+class MonitoringRelationship(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    monitor_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False) # ID Kerabat
+    patient_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False) # ID Pasien
+
+def preprocess_input(data: list, target_length: int = 1024):
+    arr = np.array(data, dtype=np.float32);
+    if len(arr) < target_length: padding = np.zeros(target_length - len(arr)); arr = np.concatenate([arr, padding])
+    elif len(arr) > target_length: arr = arr[:target_length]
+    mean = np.mean(arr); std = np.std(arr);
+    if std == 0: std = 1
+    normalized_arr = (arr - mean) / std
+    return normalized_arr.reshape(1, target_length, 1), normalized_arr
+
+def calculate_heart_rate(signal_1d_normalized):
+    try:
+        peaks, _ = find_peaks(signal_1d_normalized, prominence=0.6, distance=0.5 * SAMPLING_RATE)
+        if len(peaks) < 2: return None 
+        rr_intervals_samples = np.diff(peaks); avg_rr_samples = np.mean(rr_intervals_samples)
+        bpm = (SAMPLING_RATE * 60) / avg_rr_samples
+        app.logger.info(f"HR Calc: {len(peaks)} peaks. BPM: {bpm:.2f}")
+        return round(bpm, 2)
+    except Exception as e: app.logger.error(f"HR Calc Error: {e}"); return None
 
 @app.route("/api/v1")
 def index():
