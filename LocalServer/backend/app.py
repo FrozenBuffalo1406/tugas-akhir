@@ -12,10 +12,10 @@ from flask_migrate import Migrate
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager
 # from flask_socketio import SocketIO, emit # <-- DIHAPUS
-from tensorflow import keras
-from keras import layers
-from tensorflow.keras.saving import register_keras_serializable
-import tensorflow as tf
+# from tensorflow import keras
+# from keras import layers
+# from tensorflow.keras.saving import register_keras_serializable
+# import tensorflow as tf
 from dotenv import load_dotenv
 from scipy.signal import find_peaks
 
@@ -39,15 +39,11 @@ db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 bcrypt = Bcrypt(app)
 jwt = JWTManager(app)
-CORS(app, resources={r"/api/*": {"origins": "*"}}) # <-- Nggak perlu /socket.io/ lagi
-# socketio = SocketIO(app, cors_allowed_origins="*") # <-- DIHAPUS
+CORS(app, resources={r"/api/*": {"origins": "*"}}) 
 
 # Konstanta
 SAMPLING_RATE = 360
 
-# =============================================================================
-# 2. SETUP LOGGING (Sama)
-# =============================================================================
 log_dir = os.path.join(basedir, 'logs')
 if not os.path.exists(log_dir): os.makedirs(log_dir)
 file_handler = RotatingFileHandler(os.path.join(log_dir, 'app.log'), maxBytes=10240, backupCount=10, encoding='utf-8')
@@ -57,47 +53,55 @@ app.logger.addHandler(file_handler)
 app.logger.setLevel(logging.INFO)
 app.logger.info('Aplikasi ECG startup (Mode Ramping, No SocketIO)')
 
-# =============================================================================
-# 3. DEFINISI CUSTOM ATTENTION LAYER (Sama)
-# =============================================================================
-@tf.keras.saving.register_keras_serializable()
-class Attention(tf.keras.layers.Layer):
-    # ... (Kode class Attention tetap sama, nggak berubah) ...
-    def __init__(self, **kwargs): super(Attention, self).__init__(**kwargs); self.W = None; self.b = None
-    def build(self, input_shape):
-        if not isinstance(input_shape, tf.TensorShape): input_shape = tf.TensorShape(input_shape)
-        last_dim = input_shape[-1]; timesteps = input_shape[1]
-        self.W = self.add_weight(name="att_weight", shape=(last_dim, 1), initializer="normal", trainable=True)
-        self.b = self.add_weight(name="att_bias", shape=(timesteps, 1), initializer="zeros", trainable=True)
-        super(Attention, self).build(input_shape)
-        app.logger.info("--- Attention build completed. ---")
-    def call(self, x):
-        if self.W is None or self.b is None: raise ValueError("Attention weights W or b not initialized.")
-        et = tf.squeeze(tf.nn.tanh(tf.matmul(x, self.W) + self.b), axis=-1); at = tf.nn.softmax(et)
-        at = tf.expand_dims(at, axis=-1); output = x * at
-        return tf.reduce_sum(output, axis=1)
-    def compute_output_shape(self, input_shape): return tf.TensorShape((input_shape[0], input_shape[-1]))
-    def get_config(self): return super(Attention, self).get_config()
 
-# =============================================================================
-# 4. LOAD MODEL & FUNGSI (Heart Rate) (Sama)
-# =============================================================================
-classification_model = None
-MODEL_FILENAME = 'beat_classifier_model_SMOTE.keras'
+# classification_model = None
+# MODEL_FILENAME = 'beat_classifier_model_SMOTE.keras'
+# MODEL_PATH = os.getenv('MODEL_PATH', os.path.join(basedir, f'model/{MODEL_FILENAME}'))
+
+interpreter = None # Wadah buat TFLite Interpreter
+input_details = None
+output_details = None
+MODEL_FILENAME = 'beat_classifier.tflite' # <-- GANTI NAMA FILE JADI .tflite
 MODEL_PATH = os.getenv('MODEL_PATH', os.path.join(basedir, f'model/{MODEL_FILENAME}'))
 
-def load_classification_model():
-    # ... (Fungsi ini sama, tidak berubah) ...
-    global classification_model; app.logger.info("="*50); app.logger.info(f"Mencoba memuat model dari: {MODEL_PATH}")
+def load_tflite_model():
+    """ Load model TFLite ke memori """
+    global interpreter, input_details, output_details
+    app.logger.info("="*50)
+    app.logger.info(f"Mencoba memuat model TFLite dari: {MODEL_PATH}")
     try:
-        if not os.path.exists(MODEL_PATH): raise FileNotFoundError(f"File model tidak ditemukan di '{MODEL_PATH}'")
-        classification_model = keras.models.load_model(MODEL_PATH, custom_objects={'Attention': Attention})
-        app.logger.info(f"✅ Model Klasifikasi ('{MODEL_FILENAME}') berhasil dimuat.")
-    except Exception as e: app.logger.critical(f"❌ FATAL ERROR: Gagal memuat model. Error: {e}", exc_info=True);
+        if not os.path.exists(MODEL_PATH):
+            app.logger.error(f"File model TFLite tidak ditemukan di path: {MODEL_PATH}")
+            raise FileNotFoundError(f"File model tidak ditemukan di '{MODEL_PATH}'")
+
+        # 1. Load TFLite Interpreter
+        interpreter = tflite.Interpreter(model_path=MODEL_PATH)
+        # 2. Alokasikan memori
+        interpreter.allocate_tensors()
+        
+        # 3. Dapetin info input & output
+        input_details = interpreter.get_input_details()
+        output_details = interpreter.get_output_details()
+
+        app.logger.info(f"✅ Model TFLite ('{MODEL_FILENAME}') berhasil dimuat.")
+        app.logger.info(f"Input shape: {input_details[0]['shape']}")
+        app.logger.info(f"Output shape: {output_details[0]['shape']}")
+        
+    except Exception as e:
+        app.logger.critical(f"❌ FATAL ERROR: Gagal memuat model TFLite. Error: {e}", exc_info=True)
     app.logger.info("="*50)
 
+# def load_classification_model():
+#     # ... (Fungsi ini sama, tidak berubah) ...
+#     global classification_model; app.logger.info("="*50); app.logger.info(f"Mencoba memuat model dari: {MODEL_PATH}")
+#     try:
+#         if not os.path.exists(MODEL_PATH): raise FileNotFoundError(f"File model tidak ditemukan di '{MODEL_PATH}'")
+#         classification_model = keras.models.load_model(MODEL_PATH, custom_objects={'Attention': Attention})
+#         app.logger.info(f"✅ Model Klasifikasi ('{MODEL_FILENAME}') berhasil dimuat.")
+#     except Exception as e: app.logger.critical(f"❌ FATAL ERROR: Gagal memuat model. Error: {e}", exc_info=True);
+#     app.logger.info("="*50)
+
 def preprocess_input(data: list, target_length: int = 1024):
-    # ... (Fungsi ini sama, tidak berubah) ...
     arr = np.array(data, dtype=np.float32);
     if len(arr) < target_length: padding = np.zeros(target_length - len(arr)); arr = np.concatenate([arr, padding])
     elif len(arr) > target_length: arr = arr[:target_length]
@@ -107,7 +111,6 @@ def preprocess_input(data: list, target_length: int = 1024):
     return normalized_arr.reshape(1, target_length, 1), normalized_arr
 
 def calculate_heart_rate(signal_1d_normalized):
-    # ... (Fungsi ini sama, tidak berubah) ...
     try:
         peaks, _ = find_peaks(signal_1d_normalized, prominence=0.6, distance=0.4 * SAMPLING_RATE)
         if len(peaks) < 2: return None 
@@ -117,40 +120,30 @@ def calculate_heart_rate(signal_1d_normalized):
         return round(bpm, 2)
     except Exception as e: app.logger.error(f"HR Calc Error: {e}"); return None
 
-# =============================================================================
-# 5. DEFINISI MODEL DATABASE (Sama)
-# =============================================================================
 monitoring_relationship = db.Table('monitoring_relationship',
-    # ... (Definisi tabel monitoring_relationship tetap sama) ...
     db.Column('id', db.Integer, primary_key=True),
     db.Column('monitor_id', db.Integer, db.ForeignKey('user.id'), nullable=False),
     db.Column('patient_id', db.Integer, db.ForeignKey('user.id'), nullable=False),
     db.UniqueConstraint('monitor_id', 'patient_id', name='_monitor_patient_uc')
 )
 class User(db.Model):
-    # ... (Definisi class User tetap sama) ...
     id = db.Column(db.Integer, primary_key=True); email = db.Column(db.String(120), unique=True, nullable=False)
     name = db.Column(db.String(100), nullable=True); password_hash = db.Column(db.String(128), nullable=False)
     role = db.Column(db.String(20), nullable=False, default='pasien'); devices = db.relationship('Device', backref='owner', lazy=True)
     monitoring = db.relationship('User', secondary=monitoring_relationship, primaryjoin=(monitoring_relationship.c.monitor_id == id), secondaryjoin=(monitoring_relationship.c.patient_id == id), backref=db.backref('monitored_by', lazy='dynamic'), lazy='dynamic')
 
 class Device(db.Model):
-    # ... (Definisi class Device tetap sama) ...
     id = db.Column(db.Integer, primary_key=True); mac_address = db.Column(db.String(17), unique=True, nullable=False)
     device_id_str = db.Column(db.String(80), unique=True, nullable=False); device_name = db.Column(db.String(80), nullable=True, default="My ESP32 Device")
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True); created_at = db.Column(db.DateTime, default=datetime.utcnow)
     readings = db.relationship('ECGReading', backref='device', lazy=True, cascade="all, delete-orphan")
 
 class ECGReading(db.Model):
-    # ... (Definisi class ECGReading tetap sama) ...
     id = db.Column(db.Integer, primary_key=True); timestamp = db.Column(db.DateTime, nullable=False)
     prediction = db.Column(db.String(50), nullable=False); heart_rate = db.Column(db.Float, nullable=True)
     probabilities = db.Column(db.JSON, nullable=True); ecg_beat_data = db.Column(db.JSON, nullable=True)
     processed_ecg_data = db.Column(db.JSON, nullable=True); device_id = db.Column(db.Integer, db.ForeignKey('device.id'), nullable=False)
 
-# =============================================================================
-# 6. API SERVICES (Hapus 'socketio.emit')
-# =============================================================================
 @app.route("/api/v1")
 def index():
     # ... (Sama) ...
@@ -158,12 +151,10 @@ def index():
 
 @jwt.user_lookup_loader
 def user_lookup_callback(_jwt_header, jwt_data):
-    # ... (Sama) ...
     identity = jwt_data["sub"]; user = db.session.get(User, identity); g.user = user; return user
 
 @app.route('/api/v1/auth/register', methods=['POST'])
 def register_user():
-    # ... (Fungsi ini sama, tidak berubah) ...
     data = request.get_json(); email = data.get('email'); password = data.get('password'); name = data.get('name', email); role = data.get('role', 'pasien')
     if not email or not password: return jsonify({"error": "Email dan password dibutuhkan"}), 400
     if User.query.filter_by(email=email).first(): return jsonify({"error": "Email sudah terdaftar"}), 409
@@ -173,7 +164,6 @@ def register_user():
 
 @app.route('/api/v1/auth/login', methods=['POST'])
 def login_user():
-    # ... (Fungsi ini sama, tidak berubah) ...
     data = request.get_json(); email = data.get('email'); password = data.get('password')
     if not email or not password: return jsonify({"error": "Email dan password dibutuhkan"}), 400
     user = User.query.filter_by(email=email).first()
@@ -184,7 +174,6 @@ def login_user():
 
 @app.route('/api/v1/register-device', methods=['POST'])
 def register_device():
-    # ... (Fungsi ini sama, tidak berubah) ...
     data = request.get_json(); mac = data.get('mac_address')
     if not mac: return jsonify({"error": "'mac_address' dibutuhkan"}), 400
     device = Device.query.filter_by(mac_address=mac).first()
@@ -199,7 +188,6 @@ def register_device():
 @app.route('/api/v1/claim-device', methods=['POST'])
 @jwt_required()
 def claim_device():
-    # ... (Fungsi ini sama, tidak berubah) ...
     current_user_id = get_jwt_identity(); data = request.get_json(); mac = data.get('mac_address'); device_id_str = data.get('device_id_str')
     if not mac or not device_id_str: return jsonify({"error": "'mac_address' dan 'device_id_str' dibutuhkan"}), 400
     device = Device.query.filter_by(mac_address=mac, device_id_str=device_id_str).first()
@@ -213,7 +201,6 @@ def claim_device():
 @app.route('/api/v1/unclaim-device', methods=['POST'])
 @jwt_required()
 def unclaim_device():
-    # ... (Fungsi ini sama, tidak berubah) ...
     current_user_id = get_jwt_identity(); data = request.get_json(); device_id_str = data.get('device_id_str')
     if not device_id_str: return jsonify({"error": "'device_id_str' dibutuhkan"}), 400
     device = Device.query.filter_by(device_id_str=device_id_str, user_id=current_user_id).first()
@@ -221,52 +208,79 @@ def unclaim_device():
     device.user_id = None; db.session.commit()
     app.logger.info(f"User {current_user_id} melepaskan kepemilikan device {device_id_str}."); return jsonify({"message": f"Kepemilikan device {device_id_str} berhasil dilepaskan."}), 200
 
-# --- API ANALISIS (Hapus 'socketio.emit') ---
 @app.route('/api/v1/analyze-ecg', methods=['POST'])
 def analyze_ecg():
-    # ... (Validasi & cek device sama) ...
-    data = request.get_json(); device_id_str = data['device_id']; ecg_beat = data['ecg_beat_data']
-    ecg_afib = data.get('ecg_afib_data'); timestamp_str = data.get('timestamp')
+    data = request.get_json()
+    if not data or 'ecg_beat_data' not in data or 'device_id' not in data:
+        return jsonify({"error": "Request body harus berisi 'ecg_beat_data' dan 'device_id'"}), 400
+
+    device_id_str = data['device_id']
+    ecg_beat = data['ecg_beat_data']
+    timestamp_str = data.get('timestamp')
+    app.logger.info(f"Menerima data dari device: {device_id_str} ({len(ecg_beat)} points).")
+
     device = Device.query.filter_by(device_id_str=device_id_str).first()
     if not device: return jsonify({"error": f"Device ID '{device_id_str}' belum terdaftar."}), 404
-    if classification_model is None: return jsonify({"error": "Model inferensi sedang tidak tersedia."}), 503
+
+    if interpreter is None:
+        app.logger.error("Model TFLite belum dimuat!")
+        return jsonify({"error": "Model inferensi sedang tidak tersedia."}), 503
 
     try:
-        # ... (Proses Model & HR Calc sama) ...
-        processed_input_3d, processed_input_1d = preprocess_input(ecg_beat)
-        heart_rate_bpm = calculate_heart_rate(processed_input_1d)
-        prediction_probabilities = classification_model.predict(processed_input_3d)[0]
-        predicted_index = np.argmax(prediction_probabilities); arrhythmia_classes = ['Normal', 'Other', 'PVC']
+        # 1. Preprocessing (Tetap sama)
+        processed_input = preprocess_input(ecg_beat)
+
+        app.logger.info(f"Memulai inferensi TFLite untuk {device_id_str}...")
+        start_time = time.time()
+        
+        # --- [PERUBAHAN] Logika Inferensi TFLite ---
+        interpreter.set_tensor(input_details[0]['index'], processed_input)
+        interpreter.invoke()
+        prediction_probabilities = interpreter.get_tensor(output_details[0]['index'])[0]
+        # ---------------------------------------------
+        
+        duration = (time.time() - start_time) * 1000
+        app.logger.info(f"Inferensi {device_id_str} selesai dalam {duration:.2f} ms.") # Harusnya jadi lebih ngebut
+
+        # 2. Ambil Hasil & Hitung HR (Tetap sama)
+        predicted_index = np.argmax(prediction_probabilities)
+        arrhythmia_classes = ['Normal_Beat', 'Other', 'PVC'] # Sesuaikan ini!
         prediction_result = arrhythmia_classes[predicted_index]
+        
+        heart_rate = calculate_heart_rate(processed_input.flatten()) # Hitung HR dari sinyal yg diproses
 
-        try: parsed_timestamp = datetime.fromisoformat(timestamp_str.replace("+07:00", ""))
-        except: parsed_timestamp = datetime.utcnow()
-
+        # 3. Simpan ke Database (Update nama kolom)
+        try:
+            parsed_timestamp = datetime.fromisoformat(timestamp_str.replace("+07:00", ""))
+        except:
+            parsed_timestamp = datetime.utcnow()
+            
         new_reading = ECGReading(
-            timestamp=parsed_timestamp, prediction=prediction_result, heart_rate=heart_rate_bpm,
-            probabilities=prediction_probabilities.tolist(), ecg_beat_data=ecg_beat,
-            processed_ecg_data=processed_input_1d.tolist(), device_id=device.id
+            timestamp=parsed_timestamp,
+            prediction=prediction_result,
+            heart_rate=heart_rate,
+            processed_ecg_data=processed_input.flatten().tolist(), # Simpan data yg diproses
+            device_id=device.id
         )
-        db.session.add(new_reading); db.session.commit()
+        db.session.add(new_reading)
+        db.session.commit()
 
-        # --- TEMBAKAN REAL-TIME (SOCKET.IO) ---
-        # data_to_emit = { ... }
-        # socketio.emit('new_ecg_data', data_to_emit) # <-- BARIS INI DIHAPUS
-        
-        app.logger.info(f"Data {device_id_str} disimpan. Prediksi: {prediction_result}")
-        
-        return jsonify({"status": "success", "prediction": prediction_result, "heartRate": heart_rate_bpm})
+        app.logger.info(f"Data {device_id_str} disimpan. Prediksi: {prediction_result}, HR: {heart_rate}")
+        return jsonify({
+            "status": "success",
+            "prediction": prediction_result,
+            "heartRate": heart_rate,
+            "probabilities": prediction_probabilities.tolist()
+        })
 
     except Exception as e:
-        db.session.rollback(); app.logger.error(f"ERROR saat memproses data: {e}", exc_info=True)
+        db.session.rollback()
+        app.logger.error(f"ERROR saat memproses data dari {device_id_str}: {e}", exc_info=True)
         return jsonify({"error": f"Kesalahan internal: {str(e)}"}), 500
-
-# --- API KLIEN (Mobile App) SESUAI JSON SPEK (Sama) ---
-
+        
 @app.route('/api/v1/profile', methods=['GET'])
 @jwt_required()
 def get_profile():
-    # ... (Fungsi ini sama, tidak berubah) ...
     user = g.user; correlatives_list = []
     for patient in user.monitoring: correlatives_list.append({'id': patient.id, 'name': patient.name})
     return jsonify({"user": {"id": user.id, "name": user.name, "email": user.email}, "correlatives": correlatives_list})
@@ -274,7 +288,6 @@ def get_profile():
 @app.route('/api/v1/dashboard', methods=['GET'])
 @jwt_required()
 def get_dashboard():
-    # ... (Fungsi ini sama, tidak berubah) ...
     user = g.user; dashboard_data = []
     my_devices = user.devices
     if my_devices:
@@ -292,7 +305,6 @@ def get_dashboard():
 @app.route('/api/v1/history', methods=['GET'])
 @jwt_required()
 def get_history():
-    # ... (Fungsi ini sama, tidak berubah) ...
     user = g.user; user_id_to_view = request.args.get('userId', user.id, type=int); filter_class = request.args.get('filterClass', None, type=str)
     sort_order = request.args.get('sort', 'desc', type=str); page = request.args.get('page', 1, type=int); per_page = 20
     is_self = (user.id == user_id_to_view); is_allowed_correlative = user.monitoring.filter_by(id=user_id_to_view).first() is not None
@@ -310,7 +322,6 @@ def get_history():
 @app.route('/api/v1/correlatives/add', methods=['POST'])
 @jwt_required()
 def add_correlative():
-    # ... (Fungsi ini sama, tidak berubah) ...
     user = g.user; data = request.get_json(); scanned_code = data.get('scannedCode')
     if not scanned_code: return jsonify({"error": "Invite code dibutuhkan"}), 400
     try:
@@ -323,24 +334,14 @@ def add_correlative():
         db.session.rollback(); app.logger.error(f"Gagal add correlative: {e}", exc_info=True)
         return jsonify({"error": "Kode invite tidak valid."}), 400
 
-# =============================================================================
-# 7. PERINTAH KHUSUS UNTUK MANAJEMEN APLIKASI (CLI) (Sama)
-# =============================================================================
 @app.cli.command("init-db")
 def init_db_command():
-    # ... (Fungsi ini sama, tidak berubah) ...
     with app.app_context(): db.create_all()
     print(f"Database berhasil diinisialisasi di {app.config['SQLALCHEMY_DATABASE_URI']}")
 
-# =============================================================================
-# 8. INISIASI MODEL SAAT STARTUP (Sama)
-# =============================================================================
 with app.app_context():
-    load_classification_model()
-
-# =============================================================================
-# 9. BLOK EKSEKUSI (Balik ke `app.run` standar)
-# =============================================================================
+    # load_classification_model()
+    load_tflite_model()
 if __name__ == '__main__':
     with app.app_context():
         db.create_all() 

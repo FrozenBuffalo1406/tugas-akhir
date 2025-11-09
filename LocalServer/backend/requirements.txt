@@ -8,6 +8,7 @@ Flask-JWT-Extended # Untuk otentikasi token
 scipy
 
 numpy
-tensorflow==2.18.0
+# tensorflow==2.18.0
+tflite-runtime
 
 python-dotenv
