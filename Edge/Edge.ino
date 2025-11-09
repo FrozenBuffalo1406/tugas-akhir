@@ -6,6 +6,7 @@
 #include "butterworthfilter.h"
 #include "utils.h"
 #include "time.h"
+#include "nvs_flash.h"
 
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -71,7 +72,7 @@ void setup() {
             if (digitalRead(FACTORY_RESET_PIN) == HIGH) {Serial.println("[RESET] Batal. Tombol dilepas sebelum 10 detik.");confirmed = false;break; }
             delay(100); 
         }
-        if (confirmed) {Serial.println("\n[RESET] Konfirmasi diterima. Menghapus semua kredensial Wi-Fi...");WiFi.disconnect(true, true);delay(1000);ESP.restart();}
+        if (confirmed) {Serial.println("\n[RESET] Konfirmasi diterima. Menghapus semua kredensial Wi-Fi...");nvs_flash_erase();delay(1000);ESP.restart();}
     }
     beatFilter = new ButterworthFilter(b_beat, a_beat, FILTER_ORDER);
 
@@ -106,6 +107,7 @@ void setup() {
 
         Serial.printf("\n[PROVISIONING] Buka aplikasi 'ESP BLE Provisioning'.\n");
         Serial.printf("[PROVISIONING] Konek ke device: %s\n", dynamicServiceName.c_str());
+        Serial.printf("[PROVISIONING] mac address: %s\n", mac.c_str());
         Serial.printf("[PROV] Masukkan PIN (PoP): %s\n", PROV_POP);
         WiFiProv.beginProvision(
             NETWORK_PROV_SCHEME_BLE, 
@@ -309,7 +311,7 @@ void updateOLEDStatus() {
     display.setCursor(0, statusBarY); // Taruh kursor di kiri
     String statusText = "Status:" + currentStatus;
     if (statusText.length() > 10) { 
-        statusText = statusText.substring(0, 10) + "..";
+        statusText = statusText.substring(0, 20) + "..";
     }
     
     display.print(statusText);

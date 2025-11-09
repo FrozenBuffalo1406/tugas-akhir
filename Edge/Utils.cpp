@@ -7,7 +7,7 @@
 #include "butterworthfilter.h"
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h> 
-
+#include "nvs_flash.h"
 
 static const char* NTP_SERVER = "id.pool.ntp.org";
 // Deklarasi eksternal
@@ -188,7 +188,7 @@ void handleFactoryReset() {
     }
     if (!longPressTriggered && (millis() - buttonPressStartTime > longPressDuration)) {
       Serial.println("\n[RESET] Melakukan factory reset...");
-      WiFi.disconnect(true, true);
+      nvs_flash_erase();
       Serial.println("[RESET] Kredensial Wi-Fi dihapus. Perangkat akan restart.");
       delay(1000);
       ESP.restart();
