@@ -267,7 +267,6 @@ def analyze_ecg():
         return jsonify({"error": "Model inferensi sedang tidak tersedia."}), 503
 
     beat_prediction_result = "N/A"
-    heart_rate = None
     prediction_probabilities = []
 
     try:
@@ -278,7 +277,8 @@ def analyze_ecg():
 
         classification_interpreter.set_tensor(input_details[0]['index'], processed_input)
         classification_interpreter.invoke()
-        prediction_probabilities = classification_interpreter.get_tensor(output_details[0]['index'])[0]
+        prediction_probabilities_raw = classification_interpreter.get_tensor(output_details[0]['index'])[0]
+        prediction_probabilities = prediction_probabilities_raw.tolist()
         
         duration = (time.time() - start_time) * 1000
         app.logger.info(f"Inferensi {device_id_str} selesai dalam {duration:.2f} ms.")
@@ -301,7 +301,7 @@ def analyze_ecg():
             timestamp=parsed_timestamp,
             prediction=beat_prediction_result,
             heart_rate=heart_rate,
-            processed_ecg_data=processed_input.flatten().tolist(), 
+            probabilities = prediction_probabilities,
             device_id=device.id
         )
         db.session.add(new_reading)
