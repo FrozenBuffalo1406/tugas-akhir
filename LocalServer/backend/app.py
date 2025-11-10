@@ -148,8 +148,13 @@ def calculate_heart_rate(signal_1d_normalized):
 
 @app.route("/api/v1")
 def index():
-    return jsonify({"message": "Server Analisis ECG (Keras Full) berjalan!", "model_loaded": (classification_model is not None)})
-
+    model_1_loaded = (classification_interpreter is not None)
+    # model_2_loaded = (afib_model is not None)
+    return jsonify({
+        "message": "Server Analisis ECG (TFLite) berjalan!", 
+        "model_beat_loaded": model_1_loaded,
+        # "model_afib_loaded": model_2_loaded
+    })
 # --- API Otentikasi ---
 @app.route('/api/v1/auth/register', methods=['POST'])
 def register_user():
@@ -261,6 +266,10 @@ def analyze_ecg():
         app.logger.error("Model TFLite belum dimuat!")
         return jsonify({"error": "Model inferensi sedang tidak tersedia."}), 503
 
+    beat_prediction_result = "N/A"
+    heart_rate = None
+    prediction_probabilities = []
+
     try:
         processed_input = preprocess_input(ecg_beat, target_length=1024)
 
@@ -276,7 +285,7 @@ def analyze_ecg():
         app.logger.info(f"Inferensi {device_id_str} selesai dalam {duration:.2f} ms.")
 
         predicted_index = np.argmax(prediction_probabilities)
-        prediction_result = LABELS[predicted_index] # Pake list LABELS global
+        beat_prediction_result = BEAT_LABELS[predicted_index]
 
         heart_rate = calculate_heart_rate(processed_input.flatten()) 
 
@@ -291,7 +300,7 @@ def analyze_ecg():
             
         new_reading = ECGReading(
             timestamp=parsed_timestamp,
-            prediction=prediction_result,
+            prediction=beat_prediction_result,
             heart_rate=heart_rate,
             processed_ecg_data=processed_input.flatten().tolist(), 
             device_id=device.id
@@ -299,10 +308,10 @@ def analyze_ecg():
         db.session.add(new_reading)
         db.session.commit()
 
-        app.logger.info(f"Data {device_id_str} disimpan. Prediksi: {prediction_result}, HR: {heart_rate}")
+        app.logger.info(f"Data {device_id_str} disimpan. Prediksi: {beat_prediction_result}, HR: {heart_rate}")
         return jsonify({
             "status": "success",
-            "prediction": prediction_result,
+            "prediction": beat_prediction_result,
             "heartRate": heart_rate,
             "probabilities": prediction_probabilities.tolist()
         })
