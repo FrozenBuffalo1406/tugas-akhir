@@ -99,7 +99,8 @@ void setup() {
 
     if (WiFi.status() != WL_CONNECTED) {
         Serial.println("\n[PROVISIONING] Gagal terhubung. Memulai BLE Provisioning...");
-
+        WiFi.mode(WIFI_MODE_NULL);
+        
         String mac = WiFi.macAddress();
         String macSuffix = mac.substring(12); 
         macSuffix.replace(":", ""); 
