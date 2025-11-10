@@ -279,7 +279,6 @@ def analyze_ecg():
         classification_interpreter.set_tensor(input_details[0]['index'], processed_input)
         classification_interpreter.invoke()
         prediction_probabilities = classification_interpreter.get_tensor(output_details[0]['index'])[0]
-        prediction_probabilities = classification_model.predict(processed_input)[0]
         
         duration = (time.time() - start_time) * 1000
         app.logger.info(f"Inferensi {device_id_str} selesai dalam {duration:.2f} ms.")
