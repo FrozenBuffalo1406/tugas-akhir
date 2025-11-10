@@ -267,7 +267,6 @@ def analyze_ecg():
         return jsonify({"error": "Model inferensi sedang tidak tersedia."}), 503
 
     beat_prediction_result = "N/A"
-    heart_rate = None
     prediction_probabilities = []
 
     try:
