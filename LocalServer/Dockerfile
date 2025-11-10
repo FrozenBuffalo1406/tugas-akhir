@@ -13,4 +13,7 @@ COPY ./backend .
 RUN chown -R appuser:appuser /app
 USER appuser
 EXPOSE 8000
-CMD ["gunicorn", "--workers", "4", "--bind", "0.0.0.0:8000", "--log-level", "info", "--access-logfile", "-", "--error-logfile", "-", "app:app"]
+CMD ["gunicorn", "--workers", "4", "--bind", "0.0.0.0:8000", \
+     "--log-level", "info", "--access-logfile", "-", "--error-logfile", "-", \
+     "--preload", \
+     "app:app"]
