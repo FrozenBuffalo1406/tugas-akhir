@@ -99,12 +99,14 @@ void setup() {
 
     if (WiFi.status() != WL_CONNECTED) {
         Serial.println("\n[PROVISIONING] Gagal terhubung. Memulai BLE Provisioning...");
-        WiFi.mode(WIFI_MODE_NULL);
         
         String mac = WiFi.macAddress();
         String macSuffix = mac.substring(12); 
         macSuffix.replace(":", ""); 
         dynamicServiceName = "ECG_SETUP_" + macSuffix; 
+
+        Serial.println("[RADIO] Mematikan Wi-Fi (STA)");
+        WiFi.mode(WIFI_MODE_NULL);
 
         Serial.printf("\n[PROVISIONING] Buka aplikasi 'ESP BLE Provisioning'.\n");
         Serial.printf("[PROVISIONING] Konek ke device: %s\n", dynamicServiceName.c_str());

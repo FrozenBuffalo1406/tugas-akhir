@@ -129,7 +129,7 @@ def preprocess_input(data: list, target_length: int = 1024):
     return normalized_arr.reshape(1, target_length, 1).astype(np.float32)
 def calculate_heart_rate(signal_1d_normalized):
     try:
-        peaks, _ = find_peaks(signal_1d_normalized, prominence=0.7, distance=0.4 * SAMPLING_RATE)
+        peaks, _ = find_peaks(signal_1d_normalized, height=0.5, prominence=0.7, distance=0.4 * SAMPLING_RATE)
         
         if len(peaks) < 2: 
             app.logger.info(f"HR Calc: Puncak tidak cukup ({len(peaks)} peaks).")
