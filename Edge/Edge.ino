@@ -31,6 +31,7 @@ unsigned long buttonPressStartTime = 0;
 bool longPressTriggered = false;
 float dcBlockerW = 0.0;
 float dcBlockerX = 0.0;
+float emaFilteredValue = 0.0;
 
 extern String currentStatus; // Ambil dari Utils.cpp
 int plotX = 0; // Posisi X plotter saat ini
@@ -210,13 +211,19 @@ void loop() {
                     dcBlockerW = dcBlockerX;
 
                     float filteredBeat = beatFilter->update(dcBlockedValue);
-                    
-                    updateOLEDPlotter(filteredBeat);
 
-                    Serial.println(rawValue);
-                    
-                    ecgBeatBuffer[bufferIndex] = filteredBeat;
-
+                    if (bufferIndex == 0) {
+                        // Kalo data pertama, samain aja
+                        emaFilteredValue = filteredBeat; 
+                    } else {
+                        // Kalo data selanjutnya, pake rumus EMA
+                        emaFilteredValue = (EMA_ALPHA * filteredBeat) + ((1.0 - EMA_ALPHA) * emaFilteredValue);
+                    }
+                    Serial.println(emaFilteredValue); // Kita log yang alus
+                    ecgBeatBuffer[bufferIndex] = emaFilteredValue; // Simpen yang alus
+                    updateOLEDPlotter(emaFilteredValue);
+                    // Serial.println(rawValue);
+                    // ecgBeatBuffer[bufferIndex] = filteredBeat;
                     bufferIndex++;
                 }
             } else {
@@ -228,6 +235,7 @@ void loop() {
                 if (bufferIndex < SIGNAL_LENGTH) {
                     updateOLEDPlotter(0.0); // Gambar garis lurus (nilai 0)
                     ecgBeatBuffer[bufferIndex] = 0.0; // Isi buffer dgn 0
+                    emaFilteredValue = 0.0;
                     
                     bufferIndex++;
                 }
@@ -248,6 +256,7 @@ void loop() {
             }
             bufferIndex = 0;
             beatFilter->reset();
+            emaFilteredValue = 0.0;
 
             plotX = 0;
             lastPlotY = -1;

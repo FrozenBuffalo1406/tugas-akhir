@@ -34,8 +34,7 @@ static const int DAYLIGHT_OFFSET_SEC = 3600;
 static const int FILTER_ORDER = 3;
 static const float b_beat[] = {0.18475754, -0.11728189, -0.11728189, 0.18475754};
 static const float a_beat[] = {1.0, -2.22498772, 1.90591593, -0.63004815};
-static const float b_afib[] = {0.05193931, 0.00769507, -0.00769507, -0.05193931};
-static const float a_afib[] = {1.0, -2.4834211, 2.1311083, -0.63914615};
+static const float EMA_ALPHA = 0.35;
 
 // --- Konfigurasi Manajemen Daya ---
 static const long INACTIVITY_TIMEOUT_MS = 60000; // 1 menit

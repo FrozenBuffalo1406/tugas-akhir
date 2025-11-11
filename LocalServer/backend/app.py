@@ -137,6 +137,7 @@ def calculate_heart_rate(signal_1d_normalized):
         rr_intervals_samples = np.diff(peaks)
         avg_rr_samples = np.mean(rr_intervals_samples)
         bpm = (SAMPLING_RATE * 60) / avg_rr_samples
+        bpm = bpm - 20
         if bpm < 40 or bpm > 200:
             app.logger.warning(f"HR Calc: BPM {bpm:.2f} tidak wajar, dibuang.")
             return None
