@@ -1,6 +1,7 @@
 #include <WiFi.h>
 #include <WiFiProv.h>
 #include <WiFiClientSecure.h> 
+#include <qrcode.h>
 
 #include "config.h"
 #include "butterworthfilter.h"
@@ -11,15 +12,15 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include <qrcode.h>
 
 // --- VARIABEL GLOBAL ---
-static const char* PROV_POP = "123456";
+static const char* PROV_POP = "abcd1234";
 bool reset_provisioned = false;
 String dynamicServiceName;
 String DEVICE_ID = "";
 WiFiClientSecure client;
 ButterworthFilter* beatFilter = NULL;
+ButterworthFilter* notchFilter = NULL;
 float* ecgBeatBuffer = NULL; 
 
 int bufferIndex = 0;
@@ -40,13 +41,11 @@ bool provisioningDone = false; // Flag penanda provisioning
 unsigned long lastDisplayUpdate = 0;
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1); // -1 = no reset pin
-QRCode qrcode;
 
 void drawQRCode(String text, int startY);
 void updateOLEDPlotter(float value);
 void updateOLEDStatus();
 
-// --- FUNGSI UTAMA ARDUINO ---
 void setup() {
     Serial.begin(115200);
     delay(1000);
@@ -75,7 +74,9 @@ void setup() {
         }
         if (confirmed) {Serial.println("\n[RESET] Konfirmasi diterima. Menghapus semua kredensial Wi-Fi...");nvs_flash_erase();delay(1000);ESP.restart();}
     }
+    
     beatFilter = new ButterworthFilter(b_beat, a_beat, FILTER_ORDER);
+    notchFilter = new ButterworthFilter(b_notch, a_notch, NOTCH_FILTER_ORDER);
 
     pinMode(LO_PLUS_PIN, INPUT);
     pinMode(LO_MINUS_PIN, INPUT);
@@ -126,7 +127,6 @@ void setup() {
         Serial.printf("[PROV] Masukkan PIN (PoP): %s\n", PROV_POP);
 
         Serial.println("\n[PROVISIONING] Atau scan QR ini dengan app:");
-        // WiFiProv.printQR(dynamicServiceName.c_str(), PROV_POP, "ble");
         
         String provPayload = "{\"ver\":\"v1\",\"name\":\"" + dynamicServiceName + "\",\"pop\":\"" + PROV_POP + "\",\"transport\":\"ble\"}";
         Serial.printf("[PROV] QR Payload: %s\n", provPayload.c_str());
@@ -151,9 +151,9 @@ void setup() {
         provisioningDone = true; // Tandai provisioning selesai
         currentStatus = "Connected";
 
-        display.clearDisplay(); // Bersihin sisa "Booting..."
+        display.clearDisplay();
         display.fillRect(0, 0, SCREEN_WIDTH, PLOT_HEIGHT, SSD1306_BLACK); 
-        display.display(); // 3. Kirim buffer kosong ini ke layar
+        display.display(); 
         
         // Tampilkan IP biar keren
         String ip = WiFi.localIP().toString();
@@ -210,7 +210,8 @@ void loop() {
                     float dcBlockedValue = dcBlockerX - dcBlockerW;
                     dcBlockerW = dcBlockerX;
 
-                    float filteredBeat = beatFilter->update(dcBlockedValue);
+                    float notchedValue = notchFilter->update(dcBlockedValue);
+                    float filteredBeat = beatFilter->update(notchedValue);
 
                     if (bufferIndex == 0) {
                         // Kalo data pertama, samain aja
@@ -256,12 +257,13 @@ void loop() {
             }
             bufferIndex = 0;
             beatFilter->reset();
+            notchFilter->reset();
             emaFilteredValue = 0.0;
 
             plotX = 0;
             lastPlotY = -1;
             display.fillRect(0, 0, SCREEN_WIDTH, PLOT_HEIGHT, SSD1306_BLACK); // Hanya bersihkan area plotter
-
+            delay(1000);
         }
     }
     
@@ -272,21 +274,23 @@ void loop() {
 }
 
 void drawQRCode(String text, int startY) {
-  uint8_t qrcodeData[qrcode_getBufferSize(3)]; // Version 3
-  qrcode_initText(&qrcode, qrcodeData, 3, ECC_LOW, text.c_str());
+    QRCode qrcode;
 
-  int moduleSize = 2; // Ukuran tiap kotak QR (dalam pixel)
-  int qrSize = qrcode.size * moduleSize;
-  int xOffset = (SCREEN_WIDTH - qrSize) / 2; // Center horizontal
-  int yOffset = startY;
+    uint8_t qrcodeData[qrcode_getBufferSize(3)]; // Version 3
+    qrcode_initText(&qrcode, qrcodeData, 3, ECC_LOW, text.c_str());
 
-  for (uint8_t y = 0; y < qrcode.size; y++) {
-    for (uint8_t x = 0; x < qrcode.size; x++) {
-      if (qrcode_getModule(&qrcode, x, y)) {
-        display.fillRect(xOffset + (x * moduleSize), yOffset + (y * moduleSize), moduleSize, moduleSize, SSD1306_WHITE);
-      }
+    int moduleSize = 2; // Ukuran tiap kotak QR (dalam pixel)
+    int qrSize = qrcode.size * moduleSize;
+    int xOffset = (SCREEN_WIDTH - qrSize) / 2; // Center horizontal
+    int yOffset = startY;
+
+    for (uint8_t y = 0; y < qrcode.size; y++) {
+        for (uint8_t x = 0; x < qrcode.size; x++) {
+        if (qrcode_getModule(&qrcode, x, y)) {
+            display.fillRect(xOffset + (x * moduleSize), yOffset + (y * moduleSize), moduleSize, moduleSize, SSD1306_WHITE);
+        }
+        }
     }
-  }
 }
 
 void updateOLEDPlotter(float value) {
@@ -322,8 +326,8 @@ void updateOLEDStatus() {
     display.setTextSize(1);
     display.setCursor(0, statusBarY); // Taruh kursor di kiri
     String statusText = "Status:" + currentStatus;
-    if (statusText.length() > 10) { 
-        statusText = statusText.substring(0, 20) + "..";
+    if (statusText.length() > 13) { 
+        statusText = statusText.substring(0, 13) + "..";
     }
     
     display.print(statusText);

@@ -13,6 +13,7 @@ static const char* NTP_SERVER = "id.pool.ntp.org";
 // Deklarasi eksternal
 extern bool isSensorActive;
 extern ButterworthFilter* beatFilter;
+extern ButterworthFilter* notchFilter;
 extern int bufferIndex;
 extern unsigned long lastActivityTime;
 extern unsigned long buttonPressStartTime;
@@ -172,6 +173,7 @@ void sensorWakeUp() {
         digitalWrite(SDN_PIN, HIGH);
         isSensorActive = true;
         beatFilter->reset();
+        notchFilter->reset();
         dcBlockerW = 0.0;
         dcBlockerX = 0.0; 
         bufferIndex = 0;

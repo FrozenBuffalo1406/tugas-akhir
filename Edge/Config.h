@@ -35,6 +35,9 @@ static const int FILTER_ORDER = 3;
 static const float b_beat[] = {0.18475754, -0.11728189, -0.11728189, 0.18475754};
 static const float a_beat[] = {1.0, -2.22498772, 1.90591593, -0.63004815};
 static const float EMA_ALPHA = 0.35;
+static const int NOTCH_FILTER_ORDER = 2; 
+static const float b_notch[] = {0.96545, -1.0964, 0.96545};
+static const float a_notch[] = {1.0, -1.0964, 0.9309};
 
 // --- Konfigurasi Manajemen Daya ---
 static const long INACTIVITY_TIMEOUT_MS = 60000; // 1 menit
