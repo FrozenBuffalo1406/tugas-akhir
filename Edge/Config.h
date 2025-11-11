@@ -41,7 +41,7 @@ static const float a_notch[] = {1.0, -1.0964, 0.9309};
 
 // --- Konfigurasi Manajemen Daya ---
 static const long INACTIVITY_TIMEOUT_MS = 60000; // 1 menit
-static const long longPressDuration = 3000; // 3 detik
+static const long longPressDuration = 5000;
 
 #endif
 

@@ -164,6 +164,7 @@ void sensorSleep() {
         Serial.println("[POWER] Sensor dinonaktifkan untuk hemat daya.");
         digitalWrite(SDN_PIN, LOW);
         isSensorActive = false;
+        currentStatus = "Sleeping"
     }
 }
 
@@ -178,6 +179,7 @@ void sensorWakeUp() {
         dcBlockerX = 0.0; 
         bufferIndex = 0;
         lastActivityTime = millis();
+        currentStatus = "Waking up!"
     }
 }
 
@@ -186,7 +188,7 @@ void handleFactoryReset() {
     if (buttonPressStartTime == 0) {
       buttonPressStartTime = millis();
       longPressTriggered = false;
-      Serial.println("[RESET] Tombol reset terdeteksi, tahan selama 3 detik...");
+      Serial.println("[RESET] Tombol reset terdeteksi, tahan selama 5 detik...");
     }
     if (!longPressTriggered && (millis() - buttonPressStartTime > longPressDuration)) {
       Serial.println("\n[RESET] Melakukan factory reset...");
@@ -195,6 +197,9 @@ void handleFactoryReset() {
       delay(1000);
       ESP.restart();
       longPressTriggered = true;
+    } 
+    else if (!longPressTriggered && (millis() - buttonPressStartTime > 2000)) { 
+        sensorWakeUp();
     }
   } else {
     if (buttonPressStartTime != 0) {

@@ -1,20 +1,18 @@
 #include <WiFi.h>
 #include <WiFiProv.h>
 #include <WiFiClientSecure.h> 
-
 #include "config.h"
 #include "butterworthfilter.h"
 #include "utils.h"
 #include "time.h"
 #include "nvs_flash.h"
-
-#include "qrcode.h"
+#include "qrcoderm.h"
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
 static const char* PROV_POP = "abcd1234";
-bool reset_provisioned = false;
+bool reset_provisioned = true;
 String dynamicServiceName;
 String DEVICE_ID = "";
 WiFiClientSecure client;
@@ -66,14 +64,25 @@ void setup() {
     pinMode(FACTORY_RESET_PIN, INPUT_PULLUP);
     
     if (digitalRead(FACTORY_RESET_PIN) == LOW) {
-        Serial.println("[RESET] Tombol reset terdeteksi saat boot. Tahan selama 10 detik untuk konfirmasi...");
+        Serial.println("[RESET] Tombol reset terdeteksi saat boot. Tahan selama 5 detik untuk konfirmasi...");
         unsigned long pressStartTime = millis();
         bool confirmed = true;
-        while (millis() - pressStartTime < 10000) {
+        while (millis() - pressStartTime < longPressDuration) {
             if (digitalRead(FACTORY_RESET_PIN) == HIGH) {Serial.println("[RESET] Batal. Tombol dilepas sebelum 10 detik.");confirmed = false;break; }
             delay(100); 
         }
-        if (confirmed) {Serial.println("\n[RESET] Konfirmasi diterima. Menghapus semua kredensial Wi-Fi...");nvs_flash_erase();delay(1000);ESP.restart();}
+        if (confirmed) {
+            Serial.println("\n[RESET] Konfirmasi diterima. Menghapus semua kredensial Wi-Fi...");
+            nvs_flash_erase();
+            display.clearDisplay();
+            display.setTextSize(1);
+            display.setTextColor(SSD1306_WHITE);
+            display.setCursor(0, 0);
+            display.println("Resetting ECG Device...");
+            display.display();
+            delay(1000);
+            ESP.restart();
+        }
     }
     
     beatFilter = new ButterworthFilter(b_beat, a_beat, FILTER_ORDER);
@@ -270,7 +279,6 @@ void loop() {
     
     if (isSensorActive && (millis() - lastActivityTime > INACTIVITY_TIMEOUT_MS)) {
         sensorSleep();
-        currentStatus = "Sleeping...";
     }
 }
 
