@@ -1,7 +1,6 @@
 #include <WiFi.h>
 #include <WiFiProv.h>
 #include <WiFiClientSecure.h> 
-#include <qrcode.h>
 
 #include "config.h"
 #include "butterworthfilter.h"
@@ -9,11 +8,11 @@
 #include "time.h"
 #include "nvs_flash.h"
 
+#include "qrcode.h"
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
-// --- VARIABEL GLOBAL ---
 static const char* PROV_POP = "abcd1234";
 bool reset_provisioned = false;
 String dynamicServiceName;
@@ -41,6 +40,8 @@ bool provisioningDone = false; // Flag penanda provisioning
 unsigned long lastDisplayUpdate = 0;
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1); // -1 = no reset pin
+QRCode qrcode;
+
 
 void drawQRCode(String text, int startY);
 void updateOLEDPlotter(float value);
@@ -274,8 +275,6 @@ void loop() {
 }
 
 void drawQRCode(String text, int startY) {
-    QRCode qrcode;
-
     uint8_t qrcodeData[qrcode_getBufferSize(3)]; // Version 3
     qrcode_initText(&qrcode, qrcodeData, 3, ECC_LOW, text.c_str());
 
