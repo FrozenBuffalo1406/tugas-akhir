@@ -164,7 +164,7 @@ void sensorSleep() {
         Serial.println("[POWER] Sensor dinonaktifkan untuk hemat daya.");
         digitalWrite(SDN_PIN, LOW);
         isSensorActive = false;
-        currentStatus = "Sleeping"
+        currentStatus = "Sleeping";
     }
 }
 
@@ -179,7 +179,7 @@ void sensorWakeUp() {
         dcBlockerX = 0.0; 
         bufferIndex = 0;
         lastActivityTime = millis();
-        currentStatus = "Waking up!"
+        currentStatus = "Waking up!";
     }
 }
 

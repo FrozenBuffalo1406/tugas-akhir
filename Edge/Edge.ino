@@ -12,7 +12,7 @@
 #include <Adafruit_SSD1306.h>
 
 static const char* PROV_POP = "abcd1234";
-bool reset_provisioned = true;
+bool reset_provisioned = false;
 String dynamicServiceName;
 String DEVICE_ID = "";
 WiFiClientSecure client;
@@ -333,8 +333,8 @@ void updateOLEDStatus() {
     display.setTextSize(1);
     display.setCursor(0, statusBarY); // Taruh kursor di kiri
     String statusText = "Status:" + currentStatus;
-    if (statusText.length() > 13) { 
-        statusText = statusText.substring(0, 13) + "..";
+    if (statusText.length() > 17) { 
+        statusText = statusText.substring(0, 17) + "..";
     }
     
     display.print(statusText);
