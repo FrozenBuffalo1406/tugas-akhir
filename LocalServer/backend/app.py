@@ -10,27 +10,18 @@ from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_bcrypt import Bcrypt
-# [FIX] Import int-nya JWT
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager
 from scipy.signal import find_peaks
 from dotenv import load_dotenv
 
-from tensorflow import keras
-from keras.layers import Layer
 import tensorflow as tf
-from tensorflow.keras.saving import register_keras_serializable
 
 load_dotenv()
-
-# =============================================================================
-# 1. KONFIGURASI APLIKASI, DATABASE, OTENTIKASI
-# =============================================================================
 
 app = Flask(__name__)
 app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "kunci-rahasia-super-aman-ganti-ini-di-vps")
 basedir = os.path.abspath(os.path.dirname(__file__))
 
-# Setup Database
 db_dir = os.path.join(basedir, 'data')
 if not os.path.exists(db_dir):
     os.makedirs(db_dir)
@@ -48,9 +39,6 @@ CORS(app)
 # Konstanta
 SAMPLING_RATE = 360
 
-# =============================================================================
-# 2. SETUP LOGGING
-# =============================================================================
 log_dir = os.path.join(basedir, 'logs')
 if not os.path.exists(log_dir):
     os.makedirs(log_dir)
@@ -63,77 +51,36 @@ app.logger.addHandler(file_handler)
 app.logger.setLevel(logging.INFO)
 app.logger.info('Aplikasi ECG startup (Mode Keras Full)')
 
-# =============================================================================
-# 3. DEFINISI CUSTOM ATTENTION LAYER & LOAD MODEL
-# =============================================================================
-
-@tf.keras.saving.register_keras_serializable()
-class Attention(Layer):
-    """Custom Attention Layer."""
-    def __init__(self, **kwargs):
-        super(Attention, self).__init__(**kwargs)
-        self.W = None
-        self.b = None
-    
-    def build(self, input_shape):
-        if not isinstance(input_shape, tf.TensorShape):
-            input_shape = tf.TensorShape(input_shape)
-        last_dim = input_shape[-1]
-        timesteps = input_shape[1]
-        if last_dim is None or timesteps is None:
-            raise ValueError(f"Dimensi input tidak diketahui: {input_shape}")
-
-        self.W = self.add_weight(name="att_weight", shape=(last_dim, 1), initializer="normal", trainable=True)
-        self.b = self.add_weight(name="att_bias", shape=(timesteps, 1), initializer="zeros", trainable=True)
-        super(Attention, self).build(input_shape)
-        app.logger.info("--- Attention build completed. ---")
-
-    def call(self, x):
-        if self.W is None or self.b is None:
-            raise ValueError("Attention weights not initialized.")
-        et = tf.squeeze(tf.nn.tanh(tf.matmul(x, self.W) + self.b), axis=-1)
-        at = tf.nn.softmax(et)
-        at = tf.expand_dims(at, axis=-1)
-        output = x * at
-        return tf.reduce_sum(output, axis=1)
-
-    def compute_output_shape(self, input_shape):
-        return tf.TensorShape((input_shape[0], input_shape[-1]))
-
-    def get_config(self):
-        return super(Attention, self).get_config()
-
-# --- Variabel & Path Model ---
-classification_model = None
-MODEL_FILENAME = 'beat_classifier_model_SMOTE.keras'
+classification_interpreter = None # Ganti nama variabel
+input_details = None
+output_details = None
+MODEL_FILENAME = 'beat_classifier_model_SMOTE.tflite' # <-- GANTI KE .tflite
 MODEL_PATH = os.getenv('MODEL_PATH', os.path.join(basedir, f'model/{MODEL_FILENAME}'))
+BEAT_LABELS = ['Normal', 'PVC', 'Other'] # [FIX] Sesuaikan urutan ini SAMA PERSIS kayak pas training
 
 def load_all_models():
-    """ Load model Keras ke memori """
-    global classification_model
+    """ Load model TFLite ke memori """
+    global classification_interpreter, input_details, output_details
     app.logger.info("="*50)
-    app.logger.info(f"Mencoba memuat model Keras dari: {MODEL_PATH}")
+    app.logger.info(f"Mencoba memuat model TFLite dari: {MODEL_PATH}")
     try:
         if not os.path.exists(MODEL_PATH):
-            app.logger.error(f"File model Keras tidak ditemukan di path: {MODEL_PATH}")
+            app.logger.error(f"File model TFLite tidak ditemukan di path: {MODEL_PATH}")
             raise FileNotFoundError(f"File model tidak ditemukan di '{MODEL_PATH}'")
 
-        if Attention is None:
-            raise ImportError("Custom Attention layer tidak bisa diimpor.")
-
-        classification_model = keras.models.load_model(
-            MODEL_PATH,
-            custom_objects={'Attention': Attention}
-        )
-        app.logger.info(f"✅ Model Keras ('{MODEL_FILENAME}') berhasil dimuat.")
+        classification_interpreter = tf.lite.Interpreter(model_path=MODEL_PATH)
+        classification_interpreter.allocate_tensors()
+        input_details = classification_interpreter.get_input_details()
+        output_details = classification_interpreter.get_output_details()
+        
+        app.logger.info(f"✅ Model TFLite ('{MODEL_FILENAME}') berhasil dimuat.")
+        app.logger.info(f"  -> Input Shape: {input_details[0]['shape']}")
+        app.logger.info(f"  -> Output Shape: {output_details[0]['shape']}")
         
     except Exception as e:
-        app.logger.critical(f"❌ FATAL ERROR: Gagal memuat model Keras. Error: {e}", exc_info=True)
+        app.logger.critical(f"❌ FATAL ERROR: Gagal memuat model TFLite. Error: {e}", exc_info=True)
     app.logger.info("="*50)
 
-# =============================================================================
-# 4. DEFINISI MODEL DATABASE
-# =============================================================================
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
@@ -177,29 +124,27 @@ class MonitoringRelationship(db.Model):
     patient_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False) # ID Pasien
     __table_args__ = (db.UniqueConstraint('monitor_id', 'patient_id', name='_monitor_patient_uc'),)
 
-
-# =============================================================================
-# 5. FUNGSI UTILITY & PREPROCESSING
-# =============================================================================
 def preprocess_input(data: list, target_length: int = 1024):
     arr = np.array(data, dtype=np.float32)
     if len(arr) < target_length:
-        padding = np.zeros(target_length - len(arr))
+        # --- REVISI: Pastiin padding pake float32 ---
+        padding = np.zeros(target_length - len(arr), dtype=np.float32)
         arr = np.concatenate([arr, padding])
     elif len(arr) > target_length:
         arr = arr[:target_length]
     mean = np.mean(arr)
     std = np.std(arr)
-    if std == 0: std = 1
+    if std < 1e-6: std = 1.0 # Hindari bagi dgn nol
     normalized_arr = (arr - mean) / std
-    return normalized_arr.reshape(1, target_length, 1)
+    # --- REVISI: Pastiin shape & tipe data akhir ---
+    return normalized_arr.reshape(1, target_length, 1).astype(np.float32)
 
 def calculate_heart_rate(signal_1d_normalized):
     try:
         peaks, _ = find_peaks(
             signal_1d_normalized, 
             height=0.5,
-            prominence=0.7,
+            prominence=0.4,
             distance=0.4 * SAMPLING_RATE 
         )
         if len(peaks) < 2: 
@@ -207,9 +152,7 @@ def calculate_heart_rate(signal_1d_normalized):
             return None
         
         rr_intervals_samples = np.diff(peaks)
-        avg_rr_samples = np.mean(rr_intervals_samples)
-        bpm = (SAMPLING_RATE * 60) / avg_rr_samples
-        
+        avg_rr_samples = np.mean(rr_intervals_samples)        
         if bpm < 40 or bpm > 200:
             app.logger.warning(f"HR Calc: BPM {bpm:.2f} tidak wajar, dibuang.")
             return None
@@ -233,9 +176,6 @@ def get_dynamic_role(user):
     else:
         return 'undetermined'
 
-# =============================================================================
-# 6. API SERVICES
-# =============================================================================
 
 @app.route("/api/v1")
 def index():
@@ -343,7 +283,6 @@ def unclaim_device():
 # --- API UTAMA (INFERENSI) ---
 @app.route('/api/v1/analyze-ecg', methods=['POST'])
 def analyze_ecg():
-    # ... (kode analyze-ecg tidak berubah) ...
     data = request.get_json()
     if not data or 'ecg_beat_data' not in data or 'device_id' not in data:
         return jsonify({"error": "Request body harus berisi 'ecg_beat_data' dan 'device_id'"}), 400
@@ -355,39 +294,42 @@ def analyze_ecg():
 
     flatline_count = 0
     for point in ecg_beat:
-        if point <= 10 or point >= 4090: 
-            flatline_count += 1
+        if point <= 10 or point >= 4090: flatline_count += 1
     if (flatline_count / len(ecg_beat)) > 0.9:
-        app.logger.warning(f"Data from {device_id_str} ditolak: Sinyal flatline (elektroda terlepas). {flatline_count} points flat.")
+        app.logger.warning(f"Data from {device_id_str} ditolak: Sinyal flatline.")
         return jsonify({"error": "Data EKG tidak valid (sinyal flatline/elektroda terlepas)"}), 400
 
     device = Device.query.filter_by(device_id_str=device_id_str).first()
     if not device: return jsonify({"error": f"Device ID '{device_id_str}' belum terdaftar."}), 404
 
-    if classification_model is None:
-        app.logger.error("Model Keras belum dimuat!")
+    if classification_interpreter is None:
+        app.logger.error("Model TFLite (Beat) belum dimuat!")
         return jsonify({"error": "Model inferensi sedang tidak tersedia."}), 503
 
     try:
-        processed_input = preprocess_input(ecg_beat)
-        app.logger.info(f"Memulai inferensi Keras untuk {device_id_str}...")
+        processed_input = preprocess_input(ecg_beat, target_length=1024)
+
+        app.logger.info(f"Memulai inferensi TFLite untuk {device_id_str}...")
         start_time = time.time()
-        prediction_probabilities = classification_model.predict(processed_input)[0]
+        classification_interpreter.set_tensor(input_details[0]['index'], processed_input)
+        classification_interpreter.invoke()
+        prediction_probabilities = classification_interpreter.get_tensor(output_details[0]['index'])[0]
+        
         duration = (time.time() - start_time) * 1000
-        app.logger.info(f"Inferensi {device_id_str} selesai dalam {duration:.2f} ms.")
+        app.logger.info(f"Inferensi TFLite {device_id_str} selesai dalam {duration:.2f} ms.")
+        
         predicted_index = np.argmax(prediction_probabilities)
-        arrhythmia_classes = ['Normal_Beat', 'Other', 'PVC'] 
+        arrhythmia_classes = BEAT_LABELS 
         prediction_result = arrhythmia_classes[predicted_index]
         heart_rate = calculate_heart_rate(processed_input.flatten()) 
 
         try:
-            if "+" in timestamp_str:
-                timestamp_str = timestamp_str.split("+")[0]
+            if timestamp_str and "+" in timestamp_str: timestamp_str = timestamp_str.split("+")[0]
             parsed_timestamp = datetime.fromisoformat(timestamp_str)
         except (ValueError, TypeError, AttributeError):
             app.logger.warning(f"Timestamp tidak valid dari {device_id_str}: {timestamp_str}. Menggunakan waktu server.")
             parsed_timestamp = datetime.utcnow()
-            
+
         new_reading = ECGReading(
             timestamp=parsed_timestamp,
             prediction=prediction_result,
@@ -410,7 +352,6 @@ def analyze_ecg():
         app.logger.error(f"ERROR saat memproses data dari {device_id_str}: {e}", exc_info=True)
         return jsonify({"error": f"Kesalahan internal: {str(e)}"}), 500
 
-# --- API Dashboard & History ---
 @app.route('/api/v1/profile', methods=['GET'])
 @jwt_required()
 def get_profile():
