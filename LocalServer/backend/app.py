@@ -49,7 +49,7 @@ file_handler.setFormatter(logging.Formatter(
 file_handler.setLevel(logging.INFO)
 app.logger.addHandler(file_handler)
 app.logger.setLevel(logging.INFO)
-app.logger.info('Aplikasi ECG startup (Mode Keras Full)')
+app.logger.info('Aplikasi ECG startup')
 
 classification_interpreter = None # Ganti nama variabel
 input_details = None
@@ -179,7 +179,7 @@ def get_dynamic_role(user):
 
 @app.route("/api/v1")
 def index():
-    return jsonify({"message": "Server Analisis ECG (Keras Full) berjalan!", "model_loaded": (classification_model is not None)})
+    return jsonify({"message": "Server Analisis ECG berjalan!", "model_loaded": (classification_interpreter is not None)})
 
 # --- API Otentikasi ---
 @app.route('/api/v1/auth/register', methods=['POST'])
