@@ -10,6 +10,7 @@ from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_bcrypt import Bcrypt
+# [FIX] Import int-nya JWT
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager
 from scipy.signal import find_peaks
 from dotenv import load_dotenv
@@ -138,20 +139,19 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     name = db.Column(db.String(100), nullable=True) 
     password_hash = db.Column(db.String(128), nullable=False)
-    # [REVISI] Kolom 'role' DIHAPUS
     devices = db.relationship('Device', backref='owner', lazy=True)
     
     monitoring = db.relationship(
         'MonitoringRelationship',
         foreign_keys='MonitoringRelationship.monitor_id',
         backref='monitor', lazy='dynamic',
-        cascade="all, delete-orphan" # Jika user dihapus, relasi monitoringnya ikut kehapus
+        cascade="all, delete-orphan"
     )
     monitored_by = db.relationship(
         'MonitoringRelationship',
         foreign_keys='MonitoringRelationship.patient_id',
         backref='patient', lazy='dynamic',
-        cascade="all, delete-orphan" # Jika user dihapus, relasi yang dipantau ikut kehapus
+        cascade="all, delete-orphan"
     )
 
 class Device(db.Model):
@@ -159,7 +159,7 @@ class Device(db.Model):
     mac_address = db.Column(db.String(17), unique=True, nullable=False)
     device_id_str = db.Column(db.String(80), unique=True, nullable=False)
     device_name = db.Column(db.String(100), nullable=True, default="My ECG Device")
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True) # Bisa null (yatim piatu)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True) 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     readings = db.relationship('ECGReading', backref='device', lazy=True, cascade="all, delete-orphan")
 
@@ -198,6 +198,7 @@ def calculate_heart_rate(signal_1d_normalized):
     try:
         peaks, _ = find_peaks(
             signal_1d_normalized, 
+            height=0.5,
             prominence=0.7,
             distance=0.4 * SAMPLING_RATE 
         )
@@ -208,7 +209,6 @@ def calculate_heart_rate(signal_1d_normalized):
         rr_intervals_samples = np.diff(peaks)
         avg_rr_samples = np.mean(rr_intervals_samples)
         bpm = (SAMPLING_RATE * 60) / avg_rr_samples
-        bpm = bpm - 20
         
         if bpm < 40 or bpm > 200:
             app.logger.warning(f"HR Calc: BPM {bpm:.2f} tidak wajar, dibuang.")
@@ -221,7 +221,6 @@ def calculate_heart_rate(signal_1d_normalized):
         return None
 
 def get_dynamic_role(user):
-    """[REVISI] Fungsi baru buat ngitung role user secara dinamis."""
     is_pasien = db.session.query(Device.id).filter(Device.user_id == user.id).first() is not None
     is_kerabat = db.session.query(MonitoringRelationship.id).filter(MonitoringRelationship.monitor_id == user.id).first() is not None
     
@@ -232,8 +231,11 @@ def get_dynamic_role(user):
     elif is_kerabat:
         return 'kerabat'
     else:
-        return 'undetermined' # Belum punya role
+        return 'undetermined'
 
+# =============================================================================
+# 6. API SERVICES
+# =============================================================================
 
 @app.route("/api/v1")
 def index():
@@ -266,7 +268,10 @@ def login_user():
 
     user = User.query.filter_by(email=email).first()
     if user and bcrypt.check_password_hash(user.password_hash, password):
-        access_token = create_access_token(identity=user.id)
+        # --- [FIX] Ubah identity jadi STRING ---
+        access_token = create_access_token(identity=str(user.id))
+        # -------------------------------------
+        
         role = get_dynamic_role(user)
         app.logger.info(f"User login berhasil: {email}")
         return jsonify(
@@ -278,8 +283,10 @@ def login_user():
     app.logger.warning(f"Login gagal untuk: {email}")
     return jsonify({"error": "Email atau password salah"}), 401
 
+# --- API Device ---
 @app.route('/api/v1/register-device', methods=['POST'])
 def register_device():
+    # ... (kode register_device tidak berubah) ...
     data = request.get_json()
     mac = data.get('mac_address')
     if not mac: return jsonify({"error": "'mac_address' dibutuhkan"}), 400
@@ -296,10 +303,13 @@ def register_device():
         app.logger.info(f"Device baru {mac} didaftarkan dengan ID {new_device_id} (tanpa pemilik).")
         return jsonify({"device_id": new_device_id}), 201
 
+
 @app.route('/api/v1/claim-device', methods=['POST'])
 @jwt_required()
 def claim_device():
-    current_user_id = get_jwt_identity()
+    # --- [FIX] Ubah identity jadi INTEGER ---
+    current_user_id = int(get_jwt_identity())
+    # --------------------------------------
     data = request.get_json()
     mac = data.get('mac_address')
     device_id_str = data.get('device_id_str')
@@ -317,7 +327,9 @@ def claim_device():
 @app.route('/api/v1/unclaim-device', methods=['POST'])
 @jwt_required()
 def unclaim_device():
-    current_user_id = get_jwt_identity()
+    # --- [FIX] Ubah identity jadi INTEGER ---
+    current_user_id = int(get_jwt_identity())
+    # --------------------------------------
     data = request.get_json()
     device_id_str = data.get('device_id_str')
     if not device_id_str: return jsonify({"error": "'device_id_str' dibutuhkan"}), 400
@@ -328,8 +340,10 @@ def unclaim_device():
     app.logger.info(f"User {current_user_id} melepaskan kepemilikan device {device_id_str}.")
     return jsonify({"message": f"Kepemilikan device {device_id_str} berhasil dilepaskan."}), 200
 
+# --- API UTAMA (INFERENSI) ---
 @app.route('/api/v1/analyze-ecg', methods=['POST'])
 def analyze_ecg():
+    # ... (kode analyze-ecg tidak berubah) ...
     data = request.get_json()
     if not data or 'ecg_beat_data' not in data or 'device_id' not in data:
         return jsonify({"error": "Request body harus berisi 'ecg_beat_data' dan 'device_id'"}), 400
@@ -400,7 +414,9 @@ def analyze_ecg():
 @app.route('/api/v1/profile', methods=['GET'])
 @jwt_required()
 def get_profile():
-    current_user_id = get_jwt_identity()
+    # --- [FIX] Ubah identity jadi INTEGER ---
+    current_user_id = int(get_jwt_identity())
+    # --------------------------------------
     user = User.query.get(current_user_id)
     if not user: return jsonify({"error": "User tidak ditemukan"}), 404
     
@@ -430,7 +446,9 @@ def get_profile():
 @app.route('/api/v1/dashboard', methods=['GET'])
 @jwt_required()
 def get_dashboard():
-    current_user_id = get_jwt_identity()
+    # --- [FIX] Ubah identity jadi INTEGER ---
+    current_user_id = int(get_jwt_identity())
+    # --------------------------------------
     user = User.query.get(current_user_id)
     if not user: return jsonify({"error": "User tidak ditemukan"}), 404
 
@@ -474,7 +492,9 @@ def get_dashboard():
 @app.route('/api/v1/history', methods=['GET'])
 @jwt_required()
 def get_history():
-    current_user_id = get_jwt_identity()
+    # --- [FIX] Ubah identity jadi INTEGER ---
+    current_user_id = int(get_jwt_identity())
+    # --------------------------------------
     
     user_id_to_check = request.args.get('userId')
     if not user_id_to_check: return jsonify({"error": "Parameter 'userId' dibutuhkan"}), 400
@@ -486,9 +506,9 @@ def get_history():
     if not user_to_check: return jsonify({"error": "User yang diminta tidak ditemukan"}), 404
 
     can_view = False
-    if current_user_id == user_id_to_check: # Cek diri sendiri
+    if current_user_id == user_id_to_check:
         can_view = True
-    else: # Cek apakah dia kerabat
+    else: 
         relationship = MonitoringRelationship.query.filter_by(monitor_id=current_user_id, patient_id=user_id_to_check).first()
         if relationship: can_view = True
             
@@ -533,9 +553,11 @@ def get_history():
 @app.route('/api/v1/correlatives/add', methods=['POST'])
 @jwt_required()
 def add_correlative():
-    current_user_id = get_jwt_identity()
+    # --- [FIX] Ubah identity jadi INTEGER ---
+    current_user_id = int(get_jwt_identity())
+    # --------------------------------------
     data = request.get_json()
-    scanned_code = data.get('scannedCode') # Ini adalah ID si Pasien
+    scanned_code = data.get('scannedCode')
     if not scanned_code: return jsonify({"error": "'scannedCode' dibutuhkan"}), 400
 
     try: patient_id = int(scanned_code)
@@ -565,17 +587,17 @@ def add_correlative():
 @app.route('/api/v1/correlatives/remove', methods=['DELETE'])
 @jwt_required()
 def remove_correlative():
-    current_user_id = get_jwt_identity()
+    # --- [FIX] Ubah identity jadi INTEGER ---
+    current_user_id = int(get_jwt_identity())
+    # --------------------------------------
     data = request.get_json()
     
     relationship_to_remove = None
     action_type = None
 
     if 'patient_id' in data:
-        try:
-            patient_id_to_remove = int(data['patient_id'])
-        except ValueError:
-            return jsonify({"error": "patient_id tidak valid"}), 400
+        try: patient_id_to_remove = int(data['patient_id'])
+        except ValueError: return jsonify({"error": "patient_id tidak valid"}), 400
         
         relationship_to_remove = MonitoringRelationship.query.filter_by(
             monitor_id=current_user_id, 
@@ -584,10 +606,8 @@ def remove_correlative():
         action_type = "berhenti memantau"
 
     elif 'monitor_id' in data:
-        try:
-            monitor_id_to_remove = int(data['monitor_id'])
-        except ValueError:
-            return jsonify({"error": "monitor_id tidak valid"}), 400
+        try: monitor_id_to_remove = int(data['monitor_id'])
+        except ValueError: return jsonify({"error": "monitor_id tidak valid"}), 400
             
         relationship_to_remove = MonitoringRelationship.query.filter_by(
             monitor_id=monitor_id_to_remove, 
@@ -606,6 +626,9 @@ def remove_correlative():
     else:
         return jsonify({"error": "Hubungan kerabat tidak ditemukan."}), 404
 
+# =============================================================================
+# 7. PERINTAH CLI
+# =============================================================================
 @app.cli.command("init-db")
 def init_db_command():
     with app.app_context():
@@ -616,9 +639,15 @@ def init_db_command():
         db.create_all()
     print(f"Database berhasil diinisialisasi di {app.config['SQLALCHEMY_DATABASE_URI']}")
 
+# =============================================================================
+# 8. INISIASI MODEL SAAT STARTUP
+# =============================================================================
 with app.app_context():
     load_all_models()
 
+# =============================================================================
+# 9. BLOK EKSEKUSI (Hanya untuk Development Lokal)
+# =============================================================================
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()

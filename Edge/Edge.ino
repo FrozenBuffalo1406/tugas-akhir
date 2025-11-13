@@ -307,7 +307,6 @@ void updateOLEDPlotter(float value) {
     y = constrain(y, 0, PLOT_HEIGHT - 1); // Jaga agar tidak keluar area
 
     if (lastPlotY == -1) {
-        // Titik pertama, jangan gambar garis
         lastPlotY = y;
     }
 
