@@ -139,7 +139,7 @@ def calculate_heart_rate(signal_1d_normalized):
     try:
         peaks, _ = find_peaks(
             signal_1d_normalized, 
-            height=0.8,
+            height=0.7,
             prominence=0.4,
             distance=0.5 * SAMPLING_RATE 
         )
