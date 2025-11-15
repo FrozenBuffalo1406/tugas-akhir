@@ -139,9 +139,9 @@ def calculate_heart_rate(signal_1d_normalized):
     try:
         peaks, _ = find_peaks(
             signal_1d_normalized, 
-            height=0.7,
+            height=0.6,
             prominence=0.4,
-            distance=0.3 * SAMPLING_RATE 
+            distance=0.5 * SAMPLING_RATE 
         )
         if len(peaks) < 2: 
             app.logger.info(f"HR Calc: Puncak tidak cukup ({len(peaks)} peaks).")
