@@ -1,15 +1,15 @@
 #include <WiFi.h>
 #include <WiFiProv.h>
 #include <WiFiClientSecure.h> 
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 #include "config.h"
 #include "butterworthfilter.h"
 #include "utils.h"
 #include "time.h"
 #include "nvs_flash.h"
 #include "qrcoderm.h"
-#include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
 
 static const char* PROV_POP = "abcd1234";
 bool reset_provisioned = false;
@@ -27,6 +27,9 @@ bool isSensorActive = true;
 unsigned long lastActivityTime = 0;
 unsigned long buttonPressStartTime = 0;
 bool longPressTriggered = false;
+bool mediumPressTriggered = false;
+bool buttonWasPressed = false;
+bool isQrCodeActive = false;
 float dcBlockerW = 0.0;
 float dcBlockerX = 0.0;
 float emaFilteredValue = 0.0;
@@ -37,11 +40,11 @@ int lastPlotY = -1; // Posisi Y sebelumnya
 bool provisioningDone = false; // Flag penanda provisioning
 unsigned long lastDisplayUpdate = 0;
 
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1); // -1 = no reset pin
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 QRCode qrcode;
 
 
-void drawQRCode(String text, int startY);
+void drawQRCode(String text, int startY, int16_t fgColor);
 void updateOLEDPlotter(float value);
 void updateOLEDStatus();
 
@@ -67,7 +70,7 @@ void setup() {
         Serial.println("[RESET] Tombol reset terdeteksi saat boot. Tahan selama 5 detik untuk konfirmasi...");
         unsigned long pressStartTime = millis();
         bool confirmed = true;
-        while (millis() - pressStartTime < longPressDuration) {
+        while (millis() - pressStartTime < LONG_PRESS_DURATION_MS) {
             if (digitalRead(FACTORY_RESET_PIN) == HIGH) {Serial.println("[RESET] Batal. Tombol dilepas sebelum 10 detik.");confirmed = false;break; }
             delay(100); 
         }
@@ -76,7 +79,7 @@ void setup() {
             nvs_flash_erase();
             display.clearDisplay();
             display.setTextSize(1);
-            display.setTextColor(SSD1306_WHITE);
+            display.setTextColor(SSD1306_BLACK);
             display.setCursor(0, 0);
             display.println("Resetting ECG Device...");
             display.display();
@@ -142,7 +145,7 @@ void setup() {
         Serial.printf("[PROV] QR Payload: %s\n", provPayload.c_str());
 
         display.clearDisplay();
-        drawQRCode(provPayload, 3); 
+        drawQRCode(provPayload, 3, SSD1306_BLACK); 
         display.display();
 
         while (WiFi.status() != WL_CONNECTED) { delay(1000); }
@@ -189,7 +192,7 @@ void setup() {
 }
 
 void loop() {
-    handleFactoryReset();
+    handleMultiFunctionButton();
     if (!provisioningDone) {
         return; 
     }
@@ -282,7 +285,7 @@ void loop() {
     }
 }
 
-void drawQRCode(String text, int startY) {
+void drawQRCode(String text, int startY, int16_t fgColor) {
     uint8_t qrcodeData[qrcode_getBufferSize(3)]; // Version 3
     qrcode_initText(&qrcode, qrcodeData, 3, ECC_LOW, text.c_str());
 
@@ -293,9 +296,15 @@ void drawQRCode(String text, int startY) {
 
     for (uint8_t y = 0; y < qrcode.size; y++) {
         for (uint8_t x = 0; x < qrcode.size; x++) {
-        if (qrcode_getModule(&qrcode, x, y)) {
-            display.fillRect(xOffset + (x * moduleSize), yOffset + (y * moduleSize), moduleSize, moduleSize, SSD1306_WHITE);
-        }
+            if (qrcode_getModule(&qrcode, x, y)) {
+                display.fillRect(
+                    xOffset + (x * moduleSize), 
+                    yOffset + (y * moduleSize), 
+                    moduleSize, 
+                    moduleSize, 
+                    fgColor
+                );
+            }
         }
     }
 }

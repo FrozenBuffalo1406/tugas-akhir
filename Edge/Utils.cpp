@@ -1,16 +1,17 @@
-#include "utils.h"
-#include "config.h"
 #include <WiFi.h>
 #include <ArduinoJson.h>
-#include "time.h"
 #include <Preferences.h>
-#include "butterworthfilter.h"
 #include <HTTPClient.h>
-#include <WiFiClientSecure.h> 
+#include <WiFiClientSecure.h>
+#include <Adafruit_SSD1306.h>
+
+#include "utils.h"
+#include "config.h"
+#include "time.h"
+#include "butterworthfilter.h"
 #include "nvs_flash.h"
 
 static const char* NTP_SERVER = "id.pool.ntp.org";
-// Deklarasi eksternal
 extern bool isSensorActive;
 extern ButterworthFilter* beatFilter;
 extern ButterworthFilter* notchFilter;
@@ -18,13 +19,19 @@ extern int bufferIndex;
 extern unsigned long lastActivityTime;
 extern unsigned long buttonPressStartTime;
 extern bool longPressTriggered;
+extern bool mediumPressTriggered;
+extern bool buttonWasPressed;
+extern bool isQrCodeActive;
+extern String DEVICE_ID;
 extern float dcBlockerW;
 extern float dcBlockerX;
 extern String currentStatus;
 extern WiFiClientSecure client;
+extern Adafruit_SSD1306 display;
 String currentStatus = "Initializing...";
 
-// --- Implementasi Fungsi ---
+void drawQRCode(String text, int startY, int16_t fgColor);
+
 String getDeviceIdentity() {
 
     String mac = WiFi.macAddress();
@@ -118,7 +125,6 @@ void sendDataToServer(const char* url, const char* deviceId, const char* timesta
 
     Serial.println("[HTTP] Mengirim data ke server (Non-Streaming)...");
 
-    // 4. Kirim semua sekaligus. Fungsi POST() ini MENGEMBALIKAN HTTP Code.
     int httpCode = http.POST(jsonString);
 
     if (httpCode > 0) {
@@ -126,7 +132,6 @@ void sendDataToServer(const char* url, const char* deviceId, const char* timesta
         String response = http.getString();
         Serial.printf("[WIFI-SERVER] Balasan diterima: %s\n", response.c_str());
 
-        // Parse balasan
         JsonDocument docResponse;
         DeserializationError error = deserializeJson(docResponse, response);
 
@@ -135,14 +140,9 @@ void sendDataToServer(const char* url, const char* deviceId, const char* timesta
             Serial.println(error.c_str());
             currentStatus = "Parse Error";
         } 
-        // Cek "prediction"
         else if (!docResponse["prediction"].isNull()) { 
             const char* prediction = docResponse["prediction"];
-            
-            // --- [FIX TYPO] ---
-            // 'prediction' itu udah char*, gausah pake .c_str()
             Serial.printf("[ANALYSIS] Hasil deteksi: %s\n", prediction); 
-            
             currentStatus = String(prediction);
         } else {
             Serial.println("[WIFI-SERVER] Balasan OK, tapi format JSON tidak ada 'prediction'.");
@@ -183,30 +183,94 @@ void sensorWakeUp() {
     }
 }
 
-void handleFactoryReset() {
+void showDeviceInfoQR() {
+    Serial.println("[QR] Menampilkan Info Perangkat via QR Code...");
+    
+    String mac = WiFi.macAddress();
+    
+    JsonDocument doc;
+    doc["device_id"] = DEVICE_ID;
+    doc["mac_address"] = mac.c_str();
+    String payload;
+    serializeJson(doc, payload);
+    
+    display.clearDisplay();
+    display.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, SSD1306_WHITE);
+    drawQRCode(payload, (SCREEN_HEIGHT - 42) / 2, SSD1306_BLACK);
+    display.display();
+}
+
+void handleMultiFunctionButton() {
   if (digitalRead(FACTORY_RESET_PIN) == LOW) {
+
     if (buttonPressStartTime == 0) {
       buttonPressStartTime = millis();
       longPressTriggered = false;
-      Serial.println("[RESET] Tombol reset terdeteksi, tahan selama 5 detik...");
+      mediumPressTriggered = false;
+      buttonWasPressed = true;
+      Serial.println("[BTN] Tombol terdeteksi...");
     }
-    if (!longPressTriggered && (millis() - buttonPressStartTime > longPressDuration)) {
-      Serial.println("\n[RESET] Melakukan factory reset...");
-      nvs_flash_erase();
-      Serial.println("[RESET] Kredensial Wi-Fi dihapus. Perangkat akan restart.");
-      delay(1000);
-      ESP.restart();
-      longPressTriggered = true;
-    } 
-    else if (!longPressTriggered && (millis() - buttonPressStartTime > 2000)) { 
-        sensorWakeUp();
+
+    unsigned long pressDuration = millis() - buttonPressStartTime;
+
+    // --- Cek Tahan 3 Detik (Medium Press) ---
+    if (!mediumPressTriggered && pressDuration > MEDIUM_PRESS_DURATION_MS && !longPressTriggered) {
+      Serial.println("\n[BTN] Tahanan 3 detik terkonfirmasi. Lepas tombol untuk QR Code.");
+      mediumPressTriggered = true; // Tandai kalo 3s udah lewat
+      currentStatus = "Release for QR";
     }
-  } else {
-    if (buttonPressStartTime != 0) {
-      Serial.println("[RESET] Batal.");
-      buttonPressStartTime = 0;
+
+    // --- Cek Tahan 7 Detik (Long Press) ---
+    if (!longPressTriggered && pressDuration > LONG_PRESS_DURATION_MS) {
+        Serial.println("\n[BTN] Tahanan 7 detik terdeteksi. Melakukan factory reset...");
+        
+        nvs_flash_erase();
+        Serial.println("[RESET] Kredensial Wi-Fi dihapus. Perangkat akan restart.");
+        delay(1000);
+        ESP.restart();
+        longPressTriggered = true;
+        }
+
+    } else {
+        if (buttonWasPressed) {
+        // Ini adalah event 'rilis' (tombol baru aja dilepas)
+        
+            if (longPressTriggered) {
+                // Nggak ngapa-ngapain, ESP udah mau restart
+            
+            } else if (mediumPressTriggered) {
+                // --- RILIS DARI MEDIUM PRESS (AKTIFKAN QR CODE) ---
+                Serial.println("[BTN] Lepas tombol (Medium Press). Mengaktifkan QR Code...");
+                
+                showDeviceInfoQR(); // Panggil fungsi QR
+                isQrCodeActive = true; // SET FLAG
+                currentStatus = "QR Active";
+
+            } else {
+                if (isQrCodeActive) {
+                Serial.println("[BTN] Lepas tombol (Short Press). QR aktif, kembali normal...");
+                isQrCodeActive = false;
+                
+                // Balikin layar ke mode normal (plotter hitam)
+                display.clearDisplay();
+                display.fillRect(0, 0, SCREEN_WIDTH, PLOT_HEIGHT, SSD1306_BLACK);
+                
+                sensorWakeUp(); // Langsung trigger sensor
+                currentStatus = "Waking Up";
+
+                } else {
+                // Kalo QR lagi mati, berarti klik ini buat WAKEUP SENSOR
+                Serial.println("[BTN] Lepas tombol (Short Press). Sensor wakeup...");
+                sensorWakeUp(); // Panggil fungsi wakeup sensor
+                currentStatus = "Waking Up";
+                }
+            }
+        }
+        buttonPressStartTime = 0;
+        buttonWasPressed = false;
+        mediumPressTriggered = false; 
+        longPressTriggered = false;
     }
-  }
 }
 
 

@@ -9,6 +9,6 @@ String getDeviceIdentity();
 void sendDataToServer(const char* url, const char* deviceId, const char* timestamp, float* beatBuffer, int length);
 void sensorSleep();
 void sensorWakeUp();
-void handleFactoryReset();
+void handleMultiFunctionButton();
 
 #endif
