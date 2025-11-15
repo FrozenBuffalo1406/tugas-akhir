@@ -288,7 +288,7 @@ def analyze_ecg():
     flatline_count = 0
     for point in ecg_beat:
         if point <= 10 or point >= 3990: flatline_count += 1
-    if (flatline_count / len(ecg_beat)) > 0.6:
+    if (flatline_count / len(ecg_beat)) > 0.7:
         app.logger.warning(f"Data from {device_id_str} ditolak: Sinyal flatline.")
         return jsonify({"error": "Data EKG tidak valid (sinyal flatline/elektroda terlepas)"}), 400
 
