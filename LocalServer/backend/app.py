@@ -139,7 +139,7 @@ def calculate_heart_rate(signal_1d_normalized):
     try:
         peaks, _ = find_peaks(
             signal_1d_normalized, 
-            height=0.6,
+            height=0.7,
             prominence=0.4,
             distance=0.5 * SAMPLING_RATE 
         )
@@ -288,7 +288,7 @@ def analyze_ecg():
     flatline_count = 0
     for point in ecg_beat:
         if point <= 10 or point >= 4090: flatline_count += 1
-    if (flatline_count / len(ecg_beat)) > 0.9:
+    if (flatline_count / len(ecg_beat)) > 0.7:
         app.logger.warning(f"Data from {device_id_str} ditolak: Sinyal flatline.")
         return jsonify({"error": "Data EKG tidak valid (sinyal flatline/elektroda terlepas)"}), 400
 
