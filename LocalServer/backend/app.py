@@ -476,6 +476,60 @@ def get_history():
         "pagination": {"currentPage": pagination.page, "totalPages": pagination.pages, "totalItems": pagination.total}
     })
 
+@app.route('/api/v1/reading/<int:reading_id>', methods=['GET'])
+@jwt_required()
+def get_reading_detail(reading_id):
+    # --- [FIX] Ubah identity jadi INTEGER ---
+    current_user_id = int(get_jwt_identity())
+    # --------------------------------------
+    
+    app.logger.info(f"User {current_user_id} meminta detail untuk reading ID: {reading_id}")
+    
+    reading = ECGReading.query.get(reading_id)
+    
+    if not reading:
+        return jsonify({"error": "Data bacaan tidak ditemukan"}), 404
+
+    # --- INI BAGIAN PENTING: OTORISASI ---
+    # Kita harus cek apakah user ini boleh liat data ini
+    try:
+        device = reading.device
+        if not device:
+             # Ini harusnya gak terjadi, tapi buat jaga-jaga
+             app.logger.error(f"Reading {reading_id} tidak punya device? Aneh.")
+             return jsonify({"error": "Data device korup"}), 500
+             
+        patient_id = device.user_id
+        
+        # 1. Cek apakah user adalah si pasien sendiri
+        if current_user_id == patient_id:
+            pass # Boleh liat
+        else:
+            # 2. Cek apakah user adalah kerabat yang memantau
+            relationship = MonitoringRelationship.query.filter_by(
+                monitor_id=current_user_id, 
+                patient_id=patient_id
+            ).first()
+            
+            if not relationship:
+                # Kalo bukan pasien & bukan kerabat, usir!
+                app.logger.warning(f"User {current_user_id} mencoba akses {reading_id} milik {patient_id} secara ilegal.")
+                return jsonify({"error": "Anda tidak punya izin untuk melihat data ini"}), 403
+
+    except Exception as e:
+        app.logger.error(f"Error saat cek otorisasi reading: {e}", exc_info=True)
+        return jsonify({"error": "Kesalahan internal saat verifikasi izin"}), 500
+    
+    # --- Kalo lolos, kirim datanya ---
+    app.logger.info(f"User {current_user_id} berhasil akses {reading_id}.")
+    return jsonify({
+        "id": reading.id,
+        "timestamp": reading.timestamp.isoformat() + "Z",
+        "classification": reading.prediction,
+        "heartRate": reading.heart_rate,
+        "ecg_data": reading.processed_ecg_data # <-- INI DIA DATANYA
+    })
+
 @app.route('/api/v1/correlatives/add', methods=['POST'])
 @jwt_required()
 def add_correlative():

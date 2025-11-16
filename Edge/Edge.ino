@@ -145,7 +145,7 @@ void setup() {
         Serial.printf("[PROV] QR Payload: %s\n", provPayload.c_str());
 
         display.clearDisplay();
-        drawQRCode(provPayload, 3, SSD1306_BLACK); 
+        drawQRCode(provPayload, 3, SSD1306_WHITE);
         display.display();
 
         while (WiFi.status() != WL_CONNECTED) { delay(1000); }
@@ -166,7 +166,7 @@ void setup() {
 
         display.clearDisplay();
         display.fillRect(0, 0, SCREEN_WIDTH, PLOT_HEIGHT, SSD1306_BLACK); 
-        display.display(); 
+        display.display();
         
         // Tampilkan IP biar keren
         String ip = WiFi.localIP().toString();
