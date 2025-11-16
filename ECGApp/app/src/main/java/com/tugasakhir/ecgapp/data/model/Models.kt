@@ -7,12 +7,6 @@ data class User(
     val role: String
 )
 
-data class Device(
-    val id: Int,
-    val name: String,
-    val userId: Int?
-)
-
 data class EcgReading(
     val id: Int,
     val timestamp: String,
@@ -20,11 +14,8 @@ data class EcgReading(
     val heartRate: Float?
 )
 
-/**
- * Model buat data di Dashboard Screen
- */
 data class DashboardItem(
-    val type: String, // "self" atau "correlative"
+    val type: String,
     val userId: Int,
     val userEmail: String,
     val deviceName: String,
@@ -33,16 +24,13 @@ data class DashboardItem(
     val timestamp: String
 )
 
-/**
- * Model buat list kerabat di Profile Screen
- */
-data class CorrelativeMonitor( // Orang yg memonitor kita
+data class CorrelativeMonitor( //
     val id: Int,
     val email: String,
     val name: String
 )
 
-data class CorrelativePatient( // Orang yg kita monitor
+data class CorrelativePatient( //
     val id: Int,
     val email: String,
     val name: String

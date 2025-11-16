@@ -20,8 +20,8 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideAuthRepository(api: ApiService, prefs: UserPreferences): AuthRepository {
-        return AuthRepositoryImpl(api, prefs)
+    fun provideAuthRepository(api: ApiService, prefs: UserPreferences, db: EcgDatabase): AuthRepository {
+        return AuthRepositoryImpl(api, prefs, db)
     }
 
     @Provides

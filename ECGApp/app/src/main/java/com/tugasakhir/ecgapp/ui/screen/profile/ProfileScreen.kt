@@ -1,15 +1,13 @@
 package com.tugasakhir.ecgapp.ui.screen.profile
 
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.QrCode2
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.QrCodeScanner
-
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,15 +16,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
+import com.tugasakhir.ecgapp.core.navigation.Screen
 import com.tugasakhir.ecgapp.core.utils.Result
-
-// Asumsi responsenya kayak gini, sesuaiin ya
+import com.tugasakhir.ecgapp.core.utils.QrCodeGenerator
+import com.tugasakhir.ecgapp.core.utils.QrCodeScanner
 import com.tugasakhir.ecgapp.data.remote.response.ProfileResponse
-import com.tugasakhir.ecgapp.data.remote.response.Device // Asumsi
-import com.tugasakhir.ecgapp.data.remote.response.User // Asumsi
+import kotlinx.coroutines.flow.collectLatest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,19 +38,23 @@ fun ProfileScreen(
     val toastEvent by viewModel.toastEvent.collectAsState()
     val context = LocalContext.current
 
-    // --- BAGIAN SCANNER ---
-    val scannerLauncher = rememberLauncherForActivityResult(
-        contract = ScanContract(),
-        onResult = { result ->
-            if (result.contents == null) {
-                Toast.makeText(context, "Dibatalkan", Toast.LENGTH_SHORT).show()
-            } else {
-                // KIRIM HASIL SCAN KE VIEWMODEL
-                viewModel.onQrCodeScanned(result.contents)
+    var isScanning by remember { mutableStateOf(false) }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                // Panggil fetch-nya lagi
+                viewModel.fetchProfile()
             }
         }
-    )
 
+        lifecycleOwner.lifecycle.addObserver(observer)
+
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
     // Tunjukin Toast/Snackbar kalo ada event
     LaunchedEffect(toastEvent) {
         toastEvent?.let { message ->
@@ -58,48 +62,73 @@ fun ProfileScreen(
             viewModel.onToastHandled()
         }
     }
+    LaunchedEffect(key1 = Unit) {
+        viewModel.logoutEvent.collectLatest {
+            navController.navigate(Screen.Login.route) {
+                popUpTo(navController.graph.startDestinationId) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Profil & Kerabat") },
+                title = { Text(if (isScanning) "Scan Kode QR" else "Profil & Kerabat") },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    IconButton(onClick = {
+                        if (isScanning) {
+                            isScanning = false // Kalo lagi scan, tombol back buat nutup scanner
+                        } else {
+                            navController.popBackStack() // Kalo di profile, back ke dashboard
+                        }
+                    }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Kembali")
+                    }
+                },
+                actions = {
+                    if (!isScanning) { // Tunjukin cuma pas di halaman profile
+                        IconButton(onClick = { viewModel.onLogoutClicked() }) {
+                            Icon(Icons.AutoMirrored.Filled.Logout, "Logout")
+                        }
                     }
                 }
             )
+
         },
-        // Tombol Scan gede di bawah
         floatingActionButton = {
-            LargeFloatingActionButton(
-                onClick = {
-                    // MUNCULIN SCANNER-NYA
-                    val options = ScanOptions()
-                    options.setPrompt("Scan QR Code Kerabat atau Device")
-                    options.setBeepEnabled(true)
-                    options.setOrientationLocked(false)
-                    scannerLauncher.launch(options)
+            if (!isScanning) { // Tunjukin cuma pas di halaman profile
+                LargeFloatingActionButton(
+                    onClick = { isScanning = true } // Nyalain mode scan
+                ) {
+                    Icon(Icons.Default.QrCodeScanner, "Scan QR", modifier = Modifier.size(36.dp))
                 }
-            ) {
-                Icon(Icons.Default.QrCodeScanner, "Scan QR", modifier = Modifier.size(36.dp))
             }
         }
-    ) { padding ->
 
-        when (val state = profileState) {
-            is Result.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            is Result.Success -> {
-                // Kalo sukses, kita dapet data profile
-                ProfileContent(
-                    padding = padding,
-                    profileData = state.data,
-                    onRemovePatient = { viewModel.removePatient(it) },
-                    onUnclaimDevice = { viewModel.unclaimDevice(it) }
-                )
+    ) { padding ->
+        if (isScanning) {
+            QrCodeScanner(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                onQrCodeScanned = { scannedCode ->
+                    viewModel.onQrCodeScanned(scannedCode)
+                    isScanning = false
+                }
+            )
+        } else {
+            when (val state = profileState) {
+                is Result.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                is Result.Success -> {
+                    ProfileContent(
+                        padding = padding,
+                        profileData = state.data,
+                        onRemovePatient = { viewModel.removePatient(it) },
+                        onRemoveMonitor = { viewModel.removeMonitor(it) },
+                    )
+                }
+                is Result.Error -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Gagal load data: ${state.message}") }
+                null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             }
-            is Result.Error -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Gagal load data: ${state.message}") }
-            null -> {}
         }
     }
 }
@@ -107,110 +136,116 @@ fun ProfileScreen(
 @Composable
 fun ProfileContent(
     padding: PaddingValues,
-    profileData: ProfileResponse, // Asumsi, ganti sama response lo
+    profileData: ProfileResponse,
     onRemovePatient: (Int) -> Unit,
-    onUnclaimDevice: (String) -> Unit
+    onRemoveMonitor: (Int) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .padding(padding),
-        contentPadding = PaddingValues(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 100.dp),
+        horizontalAlignment = Alignment.Start
     ) {
 
         // --- BAGIAN QR CODE LO ---
         item {
-            Text("Kode Saya", style = MaterialTheme.typography.headlineSmall)
-            Text("Minta kerabat/monitor Anda scan kode ini", style = MaterialTheme.typography.bodyMedium)
-            Spacer(modifier = Modifier.height(16.dp))
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                Text("Kode Saya", style = MaterialTheme.typography.headlineSmall)
+                Text("Minta kerabat Anda scan kode ini", style = MaterialTheme.typography.bodyMedium)
+                Spacer(modifier = Modifier.height(16.dp))
 
-            // TAMPILIN QR CODE PAKE LIBRARY
-            Box(modifier = Modifier
-                .size(250.dp)
-                .padding(16.dp), contentAlignment = Alignment.Center) {
+                val myUserIdString = profileData.user.id.toString()
 
-                // Ganti "profileData.shareCode" sesuai data di ProfileResponse lo
-                val userShareCode = profileData.user.shareCode ?: "KODE_GA_ADA"
+                // --- PANGGIL COMPOSABLE GENERATOR LO ---
+                QrCodeGenerator(
+                    text = myUserIdString,
+                    modifier = Modifier.size(250.dp)
+                )
+                // --- BERES ---
 
-                ImageQrCode(
-                    content = userShareCode,
-                    image = Icons.Default.QrCode2 // Icon di tengah
+                Text(
+                    "ID Anda: $myUserIdString",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Gray
+                )
+                Divider(modifier = Modifier.padding(vertical = 24.dp))
+            }
+        }
+
+        // --- DAFTAR PASIEN (YANG SAYA MONITOR) ---
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Pasien Saya", style = MaterialTheme.typography.headlineSmall)
+                // --- TOMBOL SCAN BARU (PENGGANTI FAB) ---
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+        if (profileData.patients.isEmpty()) {
+            item { Text("Anda belum memonitor siapa pun.", style = MaterialTheme.typography.bodySmall) }
+        } else {
+            items(profileData.patients) { patient ->
+                CorrelativeItem(
+                    name = patient.name,
+                    email = patient.email,
+                    actionText = "Hapus",
+                    onActionClick = { onRemovePatient(patient.id) }
                 )
             }
-
-            Text(userShareCode, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-            Divider(modifier = Modifier.padding(vertical = 24.dp))
-        }
-
-        // --- BAGIAN DEVICE ---
-        item {
-            Text("Device Saya", style = MaterialTheme.typography.headlineSmall)
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-        items(profileData.devices) { device -> // Asumsi 'devices' itu List<Device>
-            DeviceItem(device = device, onUnclaim = { onUnclaimDevice(device.deviceIdStr) }) //
         }
 
         item {
             Divider(modifier = Modifier.padding(vertical = 24.dp))
-            Text("Kerabat Saya", style = MaterialTheme.typography.headlineSmall)
+            Text("Monitor Saya", style = MaterialTheme.typography.headlineSmall)
             Spacer(modifier = Modifier.height(8.dp))
         }
 
-        // --- BAGIAN KERABAT (MONITOR & PASIEN) ---
-        items(profileData.monitors) { monitor -> // Asumsi 'monitors' itu List<User>
-            CorrelativeItem(user = monitor, onRemove = { onRemovePatient(monitor.id) }) //
-        }
-        items(profileData.patients) { patient -> // Asumsi 'patients' itu List<User>
-            CorrelativeItem(user = patient, onRemove = { onRemovePatient(patient.id) }) //
+        // --- DAFTAR MONITOR (YANG MEMONITOR SAYA) ---
+        if (profileData.monitors.isEmpty()) {
+            item { Text("Belum ada yang memonitor Anda.", style = MaterialTheme.typography.bodySmall) }
+        } else {
+            items(profileData.monitors) { monitor ->
+                CorrelativeItem(
+                    name = monitor.name,
+                    email = monitor.email,
+                    actionText = "Cabut Izin",
+                    onActionClick = { onRemoveMonitor(monitor.id) }
+                )
+            }
         }
     }
 }
 
-// Composable kecil buat item device
 @Composable
-fun DeviceItem(device: Device, onUnclaim: () -> Unit) {
+fun CorrelativeItem(
+    name: String, // <-- Parameter 'name'
+    email: String, // <-- Parameter 'email'
+    actionText: String, // <-- Parameter 'actionText'
+    onActionClick: () -> Unit // <-- Parameter 'onActionClick'
+) {
     Card(modifier = Modifier
         .fillMaxWidth()
         .padding(bottom = 8.dp)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column {
-                Text(device.name, fontWeight = FontWeight.Bold) // Asumsi
-                Text(device.macAddress, fontSize = 12.sp, color = Color.Gray) // Asumsi
+            Column(modifier = Modifier.weight(1f)) {
+                Text(name, fontWeight = FontWeight.Bold) // <-- Pake 'name'
+                Text(email, style = MaterialTheme.typography.bodySmall, color = Color.Gray) // <-- Pake 'email'
             }
-            Button(onClick = onUnclaim, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
-                Text("Lepas")
-            }
-        }
-    }
-}
-
-// Composable kecil buat item kerabat
-@Composable
-fun CorrelativeItem(user: User, onRemove: () -> Unit) {
-    Card(modifier = Modifier
-        .fillMaxWidth()
-        .padding(bottom = 8.dp)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column {
-                Text(user.name, fontWeight = FontWeight.Bold) // Asumsi
-                Text(user.email, fontSize = 12.sp, color = Color.Gray) // Asumsi
-            }
-            Button(onClick = onRemove, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
-                Text("Hapus")
+            Button(
+                onClick = onActionClick, // <-- Pake 'onActionClick'
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+            ) {
+                Text(actionText) // <-- Pake 'actionText'
             }
         }
     }

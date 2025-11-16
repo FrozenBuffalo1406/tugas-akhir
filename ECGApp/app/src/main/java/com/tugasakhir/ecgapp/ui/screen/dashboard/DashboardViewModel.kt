@@ -1,4 +1,3 @@
-// com/tugasakhir/ecgapp/ui/screen/dashboard/DashboardViewModel.kt
 package com.tugasakhir.ecgapp.ui.screen.dashboard
 
 import androidx.lifecycle.ViewModel
@@ -17,17 +16,18 @@ class DashboardViewModel @Inject constructor(
     private val repository: UserRepository
 ) : ViewModel() {
 
+    // Nampung data dashboard (sesuai wrapper DashboardResponse)
     private val _dashboardState = MutableStateFlow<Result<DashboardResponse>?>(null)
     val dashboardState = _dashboardState.asStateFlow()
 
     init {
-        loadDashboard()
+        fetchDashboardData() // Langsung panggil pas VM dibuat
     }
 
-    fun loadDashboard() {
+    fun fetchDashboardData() {
         viewModelScope.launch {
-            repository.getDashboard().collect {
-                _dashboardState.value = it
+            repository.getDashboard().collect { result -> //
+                _dashboardState.value = result
             }
         }
     }

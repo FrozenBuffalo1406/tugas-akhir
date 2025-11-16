@@ -3,6 +3,7 @@ package com.tugasakhir.ecgapp.data.repository
 
 import com.tugasakhir.ecgapp.core.utils.Result
 import com.tugasakhir.ecgapp.core.utils.safeApiCall
+import com.tugasakhir.ecgapp.data.local.EcgDatabase
 import com.tugasakhir.ecgapp.data.local.UserPreferences
 import com.tugasakhir.ecgapp.data.remote.ApiService
 import com.tugasakhir.ecgapp.data.remote.request.LoginRequest
@@ -12,13 +13,11 @@ import com.tugasakhir.ecgapp.data.remote.response.LoginResponse
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 
-/**
- * Implementasi dari AuthRepository.
- * Ngobrol sama ApiService dan UserPreferences.
- */
 class AuthRepositoryImpl @Inject constructor(
     private val api: ApiService,
-    private val prefs: UserPreferences
+    private val prefs: UserPreferences,
+    private val db : EcgDatabase
+
 ) : AuthRepository {
 
     override fun login(email: String, password: String): Flow<Result<LoginResponse>> {
@@ -47,5 +46,7 @@ class AuthRepositoryImpl @Inject constructor(
     override suspend fun logout() {
         // Hapus semua data di DataStore
         prefs.clear()
+        db.ecgHistoryDao().clearReadings()
+        db.ecgHistoryDao().clearKeys(0)
     }
 }

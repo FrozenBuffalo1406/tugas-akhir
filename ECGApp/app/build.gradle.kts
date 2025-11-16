@@ -31,6 +31,7 @@ android {
             )
         }
     }
+    @Suppress("UnstableApiUsage")
     composeOptions {
         kotlinCompilerExtensionVersion = "2.0.21"
     }
@@ -47,12 +48,20 @@ android {
 }
 
 dependencies {
-    implementation(libs.qrcode.kotlin)
+    implementation(libs.io.github.g0dkar.qrcode.kotlin)
+    implementation(libs.zxing.android.embedded)
+    implementation(libs.com.google.zxing.core)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.hilt.android)
     implementation(libs.hilt.navigation.compose)
+    implementation(libs.androidx.camera.view)
+    implementation ("androidx.camera:camera-core:1.5.1")
+    implementation ("androidx.camera:camera-camera2:1.5.1")
+    implementation ("androidx.camera:camera-lifecycle:1.5.1")
+    implementation ("com.google.mlkit:barcode-scanning:17.2.0")
+    implementation ("com.google.accompanist:accompanist-permissions:0.34.0")
     ksp(libs.hilt.compiler)
     implementation(libs.room.runtime)
     implementation(libs.room.paging)
