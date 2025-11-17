@@ -16,7 +16,7 @@ import com.tugasakhir.ecgapp.core.utils.formatTimestamp
 import com.tugasakhir.ecgapp.data.model.EcgReading
 
 @Composable
-fun HistoryListItem(reading: EcgReading) {
+fun HistoryItemCard(reading: EcgReading) {
     Card(
         modifier = Modifier
             .fillMaxWidth()

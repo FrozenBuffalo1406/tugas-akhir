@@ -10,7 +10,7 @@ from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_bcrypt import Bcrypt
-from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager, create_refresh_token
 from scipy.signal import find_peaks
 from dotenv import load_dotenv
 
@@ -21,6 +21,10 @@ load_dotenv()
 app = Flask(__name__)
 app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "kunci-rahasia-super-aman-ganti-ini-di-vps")
 basedir = os.path.abspath(os.path.dirname(__file__))
+# Bikin access token cepet expired (misal 15 menit)
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(minutes=15)
+# Bikin refresh token tahan lama (misal 30 hari)
+app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=30)
 
 db_dir = os.path.join(basedir, 'data')
 if not os.path.exists(db_dir):
@@ -212,16 +216,34 @@ def login_user():
     if user and bcrypt.check_password_hash(user.password_hash, password):
         access_token = create_access_token(identity=str(user.id))
         
+        refresh_token = create_refresh_token(identity=str(user.id)) # <--- BARU
+
         role = get_dynamic_role(user)
         app.logger.info(f"User login berhasil: {email}")
+
         return jsonify(
             access_token=access_token, 
+            refresh_token=refresh_token, # <--- BARU
             user_id=user.id, 
             role=role,
             name=user.name
         )
     app.logger.warning(f"Login gagal untuk: {email}")
     return jsonify({"error": "Email atau password salah"}), 401
+
+@app.route('/api/v1/auth/refresh', methods=['POST'])
+@jwt_required(refresh=True) # <-- Ini kunci pentingnya
+def refresh_token():
+    """
+    Endpoint ini cuma bisa diakses pake REFRESH TOKEN.
+    Kalo sukses, dia ngasih ACCESS TOKEN baru.
+    """
+    identity = int(get_jwt_identity())
+    new_access_token = create_access_token(identity=identity)
+    app.logger.info(f"Token di-refresh untuk user {identity}")
+    return jsonify(access_token=new_access_token), 200
+
+
 
 @app.route('/api/v1/register-device', methods=['POST'])
 def register_device():

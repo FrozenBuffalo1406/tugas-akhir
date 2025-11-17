@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@style/Theme.ECGApp,
+               @color/black,
+               @color/purple_200,
+               @color/purple_500,
+               @color/purple_700,
+               @color/teal_200,
+               @color/teal_700,
+               @color/white,
+               @string/ecg_string"
+    tools:discard="@layout/unused_layout_goes_here" />
