@@ -1,4 +1,4 @@
-// com/tugasakhir/ecgapp/ui/screen/history/components/HistoryListItem.kt
+// com/tugasakhir/ecgapp/ui/screen/history/components/HistoryItemCard.kt
 package com.tugasakhir.ecgapp.ui.screen.history.components
 
 import androidx.compose.foundation.layout.*

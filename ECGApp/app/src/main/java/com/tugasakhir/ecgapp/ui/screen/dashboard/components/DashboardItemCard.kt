@@ -23,8 +23,7 @@ fun DashboardItemCard(item: DashboardItem, navController: NavController) {
         ),
         onClick = {
             // Navigasi ke History Screen, kirim userId
-            // PENTING: NavigationGraph lo harus di-update buat nerima argumen
-            navController.navigate("${Screen.History.route}/${item.userId}")
+            navController.navigate(Screen.History.withArgs(item.userId))
         }
     ) {
         Column(Modifier.padding(16.dp)) {

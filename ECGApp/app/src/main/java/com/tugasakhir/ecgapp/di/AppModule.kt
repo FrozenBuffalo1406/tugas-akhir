@@ -4,6 +4,7 @@ package com.tugasakhir.ecgapp.di
 import com.tugasakhir.ecgapp.data.local.EcgDatabase
 import com.tugasakhir.ecgapp.data.local.UserPreferences
 import com.tugasakhir.ecgapp.data.remote.ApiService
+import com.tugasakhir.ecgapp.data.remote.TokenManager
 import com.tugasakhir.ecgapp.data.repository.AuthRepository
 import com.tugasakhir.ecgapp.data.repository.AuthRepositoryImpl
 import com.tugasakhir.ecgapp.data.repository.UserRepository
@@ -20,8 +21,13 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideAuthRepository(api: ApiService, prefs: UserPreferences, db: EcgDatabase): AuthRepository {
-        return AuthRepositoryImpl(api, prefs, db)
+    fun provideAuthRepository(
+        api: ApiService,
+        prefs: UserPreferences,
+        db: EcgDatabase,
+        tokenManager: TokenManager
+    ): AuthRepository {
+        return AuthRepositoryImpl(api, prefs, db, tokenManager)
     }
 
     @Provides
@@ -29,7 +35,7 @@ object AppModule {
     fun provideUserRepository(
         api: ApiService,
         prefs: UserPreferences,
-        db: EcgDatabase // <-- PENTING: Injek DB
+        db: EcgDatabase
     ): UserRepository {
         return UserRepositoryImpl(api, prefs, db)
     }

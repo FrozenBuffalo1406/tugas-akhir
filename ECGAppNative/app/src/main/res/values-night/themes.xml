@@ -1,3 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <style name="Theme.ECGApp" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+
+        <!-- Warna utama (bisa dibikin lebih gelap) -->
+        <item name="colorPrimary">@color/purple_200</item>
+        <item name="colorPrimaryVariant">@color/purple_700</item>
+        <item name="colorOnPrimary">@color/black</item>
+
+        <!-- Warna sekunder -->
+        <item name="colorSecondary">@color/teal_200</item>
+        <item name="colorOnSecondary">@color/black</item>
+
+        <!-- Warna status bar -->
+        <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
+    </style>
+    <style name="Theme.ECGApp.NoActionBar" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+
+        <!-- Warna utama (bisa dibikin lebih gelap) -->
+        <item name="colorPrimary">@color/purple_200</item>
+        <item name="colorPrimaryVariant">@color/purple_700</item>
+        <item name="colorOnPrimary">@color/black</item>
+
+        <!-- Warna sekunder -->
+        <item name="colorSecondary">@color/teal_200</item>
+        <item name="colorOnSecondary">@color/black</item>
+
+        <!-- Warna status bar -->
+        <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
+    </style>
 </resources>

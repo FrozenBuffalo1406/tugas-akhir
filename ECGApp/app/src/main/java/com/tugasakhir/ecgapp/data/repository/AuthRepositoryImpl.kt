@@ -6,32 +6,39 @@ import com.tugasakhir.ecgapp.core.utils.safeApiCall
 import com.tugasakhir.ecgapp.data.local.EcgDatabase
 import com.tugasakhir.ecgapp.data.local.UserPreferences
 import com.tugasakhir.ecgapp.data.remote.ApiService
+import com.tugasakhir.ecgapp.data.remote.TokenManager
 import com.tugasakhir.ecgapp.data.remote.request.LoginRequest
 import com.tugasakhir.ecgapp.data.remote.request.RegisterRequest
 import com.tugasakhir.ecgapp.data.remote.response.GenericSuccessResponse
 import com.tugasakhir.ecgapp.data.remote.response.LoginResponse
+import kotlinx.coroutines.flow.first // <-- IMPORT INI
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 
 class AuthRepositoryImpl @Inject constructor(
     private val api: ApiService,
     private val prefs: UserPreferences,
-    private val db : EcgDatabase
-
+    private val db : EcgDatabase,
+    private val tokenManager: TokenManager
 ) : AuthRepository {
+    init {
+        tokenManager.authToken = runBlocking { prefs.authToken.first() }
+    }
 
     override fun login(email: String, password: String): Flow<Result<LoginResponse>> {
         return safeApiCall {
             val request = LoginRequest(email, password)
             val response = api.login(request)
 
-            // Kalo login sukses, LANGSUNG SIMPEN data ke DataStore
             prefs.saveLoginData(
                 token = response.accessToken,
                 userId = response.userId,
                 role = response.role,
                 name = response.name
             )
+
+            tokenManager.authToken = response.accessToken
             response
         }
     }
@@ -46,6 +53,7 @@ class AuthRepositoryImpl @Inject constructor(
     override suspend fun logout() {
         // Hapus semua data di DataStore
         prefs.clear()
+        tokenManager.authToken = null
         db.ecgHistoryDao().clearReadings()
         db.ecgHistoryDao().clearKeys(0)
     }

@@ -65,6 +65,8 @@ dependencies {
     ksp(libs.hilt.compiler)
     implementation(libs.room.runtime)
     implementation(libs.room.paging)
+    implementation(libs.androidx.paging.compose)
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1")
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
     implementation(platform(libs.androidx.compose.bom))

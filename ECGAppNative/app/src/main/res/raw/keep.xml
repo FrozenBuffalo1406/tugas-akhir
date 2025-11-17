@@ -8,5 +8,5 @@
                @color/teal_200,
                @color/teal_700,
                @color/white,
-               @string/ecg_string"
+               @string/ecg_app_native"
     tools:discard="@layout/unused_layout_goes_here" />

@@ -8,6 +8,7 @@ import com.tugasakhir.ecgapp.data.repository.UserRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -20,13 +21,15 @@ class DashboardViewModel @Inject constructor(
     private val _dashboardState = MutableStateFlow<Result<DashboardResponse>?>(null)
     val dashboardState = _dashboardState.asStateFlow()
 
-    init {
-        fetchDashboardData() // Langsung panggil pas VM dibuat
-    }
+    // Hapus 'init' block biar gak fetch 2x
+    // init {
+    //     fetchDashboardData()
+    // }
 
+    // Fungsi ini dipanggil dari UI (ON_RESUME)
     fun fetchDashboardData() {
         viewModelScope.launch {
-            repository.getDashboard().collect { result -> //
+            repository.getDashboard().collect { result ->
                 _dashboardState.value = result
             }
         }

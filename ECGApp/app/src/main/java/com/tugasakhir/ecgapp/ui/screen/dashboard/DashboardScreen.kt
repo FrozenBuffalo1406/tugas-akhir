@@ -12,11 +12,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import com.tugasakhir.ecgapp.core.navigation.Screen
 import com.tugasakhir.ecgapp.core.utils.Result
@@ -30,22 +30,22 @@ fun DashboardScreen(
 ) {
     // Dengerin state dari ViewModel
     val dashboardState by viewModel.dashboardState.collectAsState()
+
+    // --- LOGIC AUTO-REFRESH (ON_RESUME) ---
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            // Kalo layarnya "RESUME" (baru dibuka atau abis 'back' ke sini)
             if (event == Lifecycle.Event.ON_RESUME) {
-                // Panggil fungsinya lagi
                 viewModel.fetchDashboardData()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-
-        // Hapus observer pas layarnya ancur (onDispose)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
+    // --- END LOGIC AUTO-REFRESH ---
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -102,4 +102,3 @@ fun DashboardScreen(
         }
     }
 }
-

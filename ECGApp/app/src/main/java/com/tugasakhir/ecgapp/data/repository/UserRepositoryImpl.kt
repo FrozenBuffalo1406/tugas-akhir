@@ -21,15 +21,13 @@ import com.tugasakhir.ecgapp.data.remote.response.ProfileResponse
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import androidx.paging.map
+import kotlinx.coroutines.flow.flow
 import javax.inject.Inject
 
-/**
- * Implementasi dari UserRepository.
- */
 class UserRepositoryImpl @Inject constructor(
     private val api: ApiService,
     private val prefs: UserPreferences,
-    private val database: EcgDatabase
+    private val database: EcgDatabase,
 ) : UserRepository {
 
     override fun getProfile(): Flow<Result<ProfileResponse>> {

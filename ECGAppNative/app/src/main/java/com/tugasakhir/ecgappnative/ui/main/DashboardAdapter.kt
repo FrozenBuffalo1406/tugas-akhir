@@ -1,4 +1,4 @@
-package com.example.ecgapp.ui.main
+package com.tugasakhir.ecgappnative.ui.main
 
 import android.graphics.Color
 import android.view.LayoutInflater
@@ -29,7 +29,7 @@ class DashboardAdapter(
         holder.bind(item, onUnclaimClick, onRemoveCorrelativeClick, onItemClick)
     }
 
-    inner class ViewHolder(private val binding: ItemDashboardBinding) : RecyclerView.ViewHolder(binding.root) {
+    class ViewHolder(private val binding: ItemDashboardBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(
             item: DashboardItem,
             onUnclaimClick: (String) -> Unit,

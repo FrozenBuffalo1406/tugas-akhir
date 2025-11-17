@@ -6,6 +6,7 @@ import com.tugasakhir.ecgapp.core.utils.Constants
 import com.tugasakhir.ecgapp.data.local.UserPreferences
 import com.tugasakhir.ecgapp.data.remote.ApiService
 import com.tugasakhir.ecgapp.data.remote.AuthInterceptor
+import com.tugasakhir.ecgapp.data.remote.TokenManager
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -30,8 +31,16 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideAuthInterceptor(userPrefs: UserPreferences): AuthInterceptor {
-        return AuthInterceptor(userPrefs)
+    fun provideAuthInterceptor(
+        tokenManager: TokenManager
+    ): AuthInterceptor {
+        return AuthInterceptor(tokenManager)
+    }
+
+    @Provides
+    @Singleton
+    fun provideTokenManager(): TokenManager {
+        return TokenManager()
     }
 
     @Provides

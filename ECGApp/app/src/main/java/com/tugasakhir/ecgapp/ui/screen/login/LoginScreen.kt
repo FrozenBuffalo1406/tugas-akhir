@@ -1,6 +1,6 @@
-// com/tugasakhir/ecgapp/ui/screen/login/LoginScreen.kt
 package com.tugasakhir.ecgapp.ui.screen.login
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.text.KeyboardOptions
@@ -8,6 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -16,9 +17,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.tugasakhir.ecgapp.core.navigation.Screen
 import com.tugasakhir.ecgapp.core.utils.Result
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -28,24 +26,33 @@ fun LoginScreen(
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    val isLoading by viewModel.isLoading.collectAsState()
-    val snackbarHostState = remember { SnackbarHostState() }
-    val loginEvent by viewModel.loginEvent.collectAsState() // Ganti nama
 
+    // Dengerin dua state dari ViewModel
+    val isLoading by viewModel.isLoading.collectAsState()
+    val loginEvent by viewModel.loginEvent.collectAsState()
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
+
+    // LaunchedEffect buat nanganin event (navigasi/toast)
     LaunchedEffect(loginEvent) {
-        when (val state = loginEvent) {
+        when (val event = loginEvent) {
             is Result.Success -> {
+                // 1. Reset event-nya dulu
                 viewModel.onEventHandled()
+                // 2. Baru navigasi
                 navController.navigate(Screen.Dashboard.route) {
                     popUpTo(Screen.Login.route) { inclusive = true }
                 }
             }
             is Result.Error -> {
-                snackbarHostState.showSnackbar(state.message ?: "Error tidak diketahui")
+                // 1. Tunjukin error
+                val message = event.message ?: "Error tidak diketahui"
+                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                // 2. Reset event-nya
                 viewModel.onEventHandled()
             }
-            is Result.Loading ->  {}
-            null -> {}
+            else -> {} // Loading atau null gak ngapa-ngapain di sini
         }
     }
 
@@ -85,7 +92,7 @@ fun LoginScreen(
             Button(
                 onClick = { viewModel.login(email, password) },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !isLoading
+                enabled = !isLoading // Tombol mati pas loading
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)

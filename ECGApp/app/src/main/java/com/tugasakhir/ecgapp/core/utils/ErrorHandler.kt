@@ -1,4 +1,3 @@
-// com/proyeklo/ecgapp/core/utils/ErrorHandler.kt
 package com.tugasakhir.ecgapp.core.utils
 
 import com.google.gson.Gson
@@ -28,7 +27,7 @@ fun <T> safeApiCall(apiCall: suspend () -> T): Flow<Result<T>> = flow {
         val errorMessage = parseErrorBody(e)
         emit(Result.Error(errorMessage, e.code()))
 
-    } catch (_: IOException) {
+    } catch (e: IOException) {
         // 5. Kalo GAGAL (Error Jaringan/Internet Mati)
         emit(Result.Error("Masalah jaringan, cek koneksi internet lo.", null))
 

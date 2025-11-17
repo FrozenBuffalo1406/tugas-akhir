@@ -216,7 +216,7 @@ def login_user():
     if user and bcrypt.check_password_hash(user.password_hash, password):
         access_token = create_access_token(identity=str(user.id))
         
-        refresh_token = create_refresh_token(identity=str(user.id)) # <--- BARU
+        refresh_token = create_refresh_token(identity=str(user.id))
 
         role = get_dynamic_role(user)
         app.logger.info(f"User login berhasil: {email}")
@@ -232,7 +232,7 @@ def login_user():
     return jsonify({"error": "Email atau password salah"}), 401
 
 @app.route('/api/v1/auth/refresh', methods=['POST'])
-@jwt_required(refresh=True) # <-- Ini kunci pentingnya
+@jwt_required(refresh=True)
 def refresh_token():
     """
     Endpoint ini cuma bisa diakses pake REFRESH TOKEN.

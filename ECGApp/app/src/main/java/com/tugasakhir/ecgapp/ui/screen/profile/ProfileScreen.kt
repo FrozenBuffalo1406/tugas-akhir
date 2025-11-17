@@ -1,12 +1,13 @@
 package com.tugasakhir.ecgapp.ui.screen.profile
 
 import android.widget.Toast
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -14,17 +15,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import com.tugasakhir.ecgapp.core.navigation.Screen
-import com.tugasakhir.ecgapp.core.utils.Result
 import com.tugasakhir.ecgapp.core.utils.QrCodeGenerator
 import com.tugasakhir.ecgapp.core.utils.QrCodeScanner
+import com.tugasakhir.ecgapp.core.utils.Result
 import com.tugasakhir.ecgapp.data.remote.response.ProfileResponse
 import kotlinx.coroutines.flow.collectLatest
 
@@ -38,38 +39,43 @@ fun ProfileScreen(
     val toastEvent by viewModel.toastEvent.collectAsState()
     val context = LocalContext.current
 
+    // State buat nentuin mode scan
     var isScanning by remember { mutableStateOf(false) }
 
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                // Panggil fetch-nya lagi
-                viewModel.fetchProfile()
-            }
-        }
-
-        lifecycleOwner.lifecycle.addObserver(observer)
-
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-    }
-    // Tunjukin Toast/Snackbar kalo ada event
+    // Dengerin event toast
     LaunchedEffect(toastEvent) {
         toastEvent?.let { message ->
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
             viewModel.onToastHandled()
         }
     }
+
+    // Dengerin event logout
     LaunchedEffect(key1 = Unit) {
         viewModel.logoutEvent.collectLatest {
+            // Kalo sukses logout, balik ke Login
             navController.navigate(Screen.Login.route) {
                 popUpTo(navController.graph.startDestinationId) { inclusive = true }
                 launchSingleTop = true
             }
         }
     }
+
+    // --- LOGIC AUTO-REFRESH (ON_RESUME) ---
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            // Kalo lagi gak scan DAN layarnya resume
+            if (event == Lifecycle.Event.ON_RESUME && !isScanning) {
+                viewModel.fetchProfile()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+    // --- END LOGIC AUTO-REFRESH ---
 
     Scaffold(
         topBar = {
@@ -78,26 +84,27 @@ fun ProfileScreen(
                 navigationIcon = {
                     IconButton(onClick = {
                         if (isScanning) {
-                            isScanning = false // Kalo lagi scan, tombol back buat nutup scanner
+                            isScanning = false // Back dari scanner
                         } else {
-                            navController.popBackStack() // Kalo di profile, back ke dashboard
+                            navController.popBackStack() // Back dari profile
                         }
                     }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Kembali")
                     }
                 },
+                // Tombol Logout
                 actions = {
-                    if (!isScanning) { // Tunjukin cuma pas di halaman profile
+                    if (!isScanning) {
                         IconButton(onClick = { viewModel.onLogoutClicked() }) {
-                            Icon(Icons.AutoMirrored.Filled.Logout, "Logout")
+                            Icon(Icons.Default.Logout, "Logout")
                         }
                     }
                 }
             )
-
         },
+        // Tombol Scan FAB
         floatingActionButton = {
-            if (!isScanning) { // Tunjukin cuma pas di halaman profile
+            if (!isScanning) {
                 LargeFloatingActionButton(
                     onClick = { isScanning = true } // Nyalain mode scan
                 ) {
@@ -105,17 +112,19 @@ fun ProfileScreen(
                 }
             }
         }
-
     ) { padding ->
+
         if (isScanning) {
+            // TAMPILKAN SCANNER
             QrCodeScanner(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 onQrCodeScanned = { scannedCode ->
                     viewModel.onQrCodeScanned(scannedCode)
-                    isScanning = false
+                    isScanning = false // Tutup scanner kalo udah dapet
                 }
             )
         } else {
+            // TAMPILKAN KONTEN PROFILE
             when (val state = profileState) {
                 is Result.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 is Result.Success -> {
@@ -123,7 +132,7 @@ fun ProfileScreen(
                         padding = padding,
                         profileData = state.data,
                         onRemovePatient = { viewModel.removePatient(it) },
-                        onRemoveMonitor = { viewModel.removeMonitor(it) },
+                        onRemoveMonitor = { viewModel.removeMonitor(it) }
                     )
                 }
                 is Result.Error -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Gagal load data: ${state.message}") }
@@ -138,17 +147,17 @@ fun ProfileContent(
     padding: PaddingValues,
     profileData: ProfileResponse,
     onRemovePatient: (Int) -> Unit,
-    onRemoveMonitor: (Int) -> Unit,
+    onRemoveMonitor: (Int) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .padding(padding),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 100.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 100.dp), // Padding bawah biar FAB gak nutupin
         horizontalAlignment = Alignment.Start
     ) {
 
-        // --- BAGIAN QR CODE LO ---
+        // --- BAGIAN QR CODE ---
         item {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 Text("Kode Saya", style = MaterialTheme.typography.headlineSmall)
@@ -157,12 +166,11 @@ fun ProfileContent(
 
                 val myUserIdString = profileData.user.id.toString()
 
-                // --- PANGGIL COMPOSABLE GENERATOR LO ---
+                // Panggil QrCodeGenerator dari QRHelper.kt
                 QrCodeGenerator(
                     text = myUserIdString,
                     modifier = Modifier.size(250.dp)
                 )
-                // --- BERES ---
 
                 Text(
                     "ID Anda: $myUserIdString",
@@ -175,14 +183,7 @@ fun ProfileContent(
 
         // --- DAFTAR PASIEN (YANG SAYA MONITOR) ---
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Pasien Saya", style = MaterialTheme.typography.headlineSmall)
-                // --- TOMBOL SCAN BARU (PENGGANTI FAB) ---
-            }
+            Text("Pasien Saya", style = MaterialTheme.typography.headlineSmall)
             Spacer(modifier = Modifier.height(8.dp))
         }
         if (profileData.patients.isEmpty()) {
@@ -220,12 +221,13 @@ fun ProfileContent(
     }
 }
 
+// Composable buat nampilin satu baris kerabat
 @Composable
 fun CorrelativeItem(
-    name: String, // <-- Parameter 'name'
-    email: String, // <-- Parameter 'email'
-    actionText: String, // <-- Parameter 'actionText'
-    onActionClick: () -> Unit // <-- Parameter 'onActionClick'
+    name: String,
+    email: String,
+    actionText: String,
+    onActionClick: () -> Unit
 ) {
     Card(modifier = Modifier
         .fillMaxWidth()
@@ -238,14 +240,14 @@ fun CorrelativeItem(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(name, fontWeight = FontWeight.Bold) // <-- Pake 'name'
-                Text(email, style = MaterialTheme.typography.bodySmall, color = Color.Gray) // <-- Pake 'email'
+                Text(name, fontWeight = FontWeight.Bold)
+                Text(email, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
             }
             Button(
-                onClick = onActionClick, // <-- Pake 'onActionClick'
+                onClick = onActionClick,
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
             ) {
-                Text(actionText) // <-- Pake 'actionText'
+                Text(actionText)
             }
         }
     }
