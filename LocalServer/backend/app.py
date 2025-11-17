@@ -216,7 +216,7 @@ def login_user():
     if user and bcrypt.check_password_hash(user.password_hash, password):
         access_token = create_access_token(identity=str(user.id))
         
-        refresh_token = create_access_token(identity=str(user.id))
+        refresh_token = create_refresh_token(identity=str(user.id))
 
         role = get_dynamic_role(user)
         app.logger.info(f"User login berhasil: {email}")
