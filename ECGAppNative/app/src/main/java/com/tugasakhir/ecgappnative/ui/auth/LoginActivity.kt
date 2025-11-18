@@ -11,7 +11,7 @@ import com.tugasakhir.ecgappnative.MainApplication
 import com.tugasakhir.ecgappnative.data.model.LoginRequest
 import com.tugasakhir.ecgappnative.databinding.ActivityLoginBinding
 import com.tugasakhir.ecgappnative.ui.main.DashboardActivity
-import com.tugasakhir.ecgappnative.utils.SessionManager
+import com.tugasakhir.ecgappnative.data.utils.SessionManager
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 

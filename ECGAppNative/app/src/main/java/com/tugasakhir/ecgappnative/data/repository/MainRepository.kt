@@ -4,9 +4,12 @@ import com.tugasakhir.ecgappnative.data.api.ApiService
 import com.tugasakhir.ecgappnative.data.local.HistoryDao
 import com.tugasakhir.ecgappnative.data.local.HistoryEntity
 import com.tugasakhir.ecgappnative.data.model.*
-import com.tugasakhir.ecgappnative.utils.SessionManager
+import com.tugasakhir.ecgappnative.data.utils.ResultWrapper
+import com.tugasakhir.ecgappnative.data.utils.SessionManager
+import com.tugasakhir.ecgappnative.data.utils.safeApiCall
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.first
 import retrofit2.Response
 
 /**
@@ -77,9 +80,20 @@ class MainRepository(
         } catch (_: Exception) {
             // Gagal konek, lanjut ambil dari cache
         }
-
-        // 2. Ambil dari cache jika network gagal
         return historyDao.getAll()
     }
+    suspend fun getReadingDetail(readingId: Int): ResultWrapper<HistoryDetailResponse> {
+        // Kita pake 'sessionManager.tokenFlow.first()' buat mastiin dapet token
+        // Walaupun 'AuthInterceptor' udah nanganin, ini buat jaga-jaga
+        // Kalo lo yakin 100% Interceptor jalan, ini gak perlu, tapi ini lebih aman
+        val token = session.tokenFlow.first()
+        if (token.isNullOrEmpty()) {
+            return ResultWrapper.Error("User not logged in", 401)
+        }
+        return safeApiCall {
+            handleApiCall { api.getReadingDetail(readingId) }
+        }
+    }
+
 
 }

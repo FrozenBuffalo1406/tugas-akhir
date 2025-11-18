@@ -5,7 +5,7 @@ import com.tugasakhir.ecgappnative.data.api.ApiClient
 import com.tugasakhir.ecgappnative.data.local.HistoryDatabase
 import com.tugasakhir.ecgappnative.data.repository.MainRepository
 import com.tugasakhir.ecgappnative.ui.ViewModelFactory
-import com.tugasakhir.ecgappnative.utils.SessionManager
+import com.tugasakhir.ecgappnative.data.utils.SessionManager
 
 // Kelas Application kustom untuk inisialisasi Repository
 class MainApplication : Application() {

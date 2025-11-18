@@ -30,7 +30,10 @@ interface ApiService {
 
     @GET("history")
     suspend fun getHistory(@Query("userId") userId: Int): Response<HistoryResponse>
-
+    @GET("reading/{id}")
+    suspend fun getReadingDetail(
+        @Path("id") readingId: Int
+    ): Response<HistoryDetailResponse>
     @GET("profile")
     suspend fun getProfile(): Response<ProfileResponse>
 

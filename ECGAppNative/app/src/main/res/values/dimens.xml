@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Jarak lompatan buat animasi FAB -->
+    <!-- Margin 1: Buat FAB pertama di atas tombol utama -->
+    <dimen name="fab_margin_1">64dp</dimen>
+
+    <!-- Margin 2: Buat FAB kedua di atas tombol pertama -->
+    <dimen name="fab_margin_2">128dp</dimen>
+
+    <!-- Standar margin (opsional, buat kerapian) -->
+    <dimen name="standard_margin">16dp</dimen>
+</resources>

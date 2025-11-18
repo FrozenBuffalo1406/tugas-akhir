@@ -5,12 +5,12 @@ import android.os.Bundle
 import android.view.View
 import android.widget.Toast
 import androidx.activity.viewModels
-import androidx.appcompat.app.AppCompatActivity
 import com.tugasakhir.ecgappnative.MainApplication
 import com.tugasakhir.ecgappnative.databinding.ActivityProfileBinding
+import com.tugasakhir.ecgappnative.ui.BaseActivity
 import com.tugasakhir.ecgappnative.ui.auth.LoginActivity
 
-class ProfileActivity : AppCompatActivity() {
+class ProfileActivity : BaseActivity() {
 
     private lateinit var binding: ActivityProfileBinding
 

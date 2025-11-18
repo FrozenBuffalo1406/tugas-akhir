@@ -7,7 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.tugasakhir.ecgappnative.data.model.ProfileResponse
 import com.tugasakhir.ecgappnative.data.repository.MainRepository
-import com.tugasakhir.ecgappnative.utils.QRCodeGenerator
+import com.tugasakhir.ecgappnative.data.utils.QRCodeGenerator
 import kotlinx.coroutines.launch
 
 // Data class wrapper untuk UI State

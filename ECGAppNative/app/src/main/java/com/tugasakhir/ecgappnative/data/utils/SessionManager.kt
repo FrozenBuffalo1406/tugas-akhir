@@ -1,4 +1,4 @@
-package com.tugasakhir.ecgappnative.utils
+package com.tugasakhir.ecgappnative.data.utils
 
 import android.content.Context
 import androidx.datastore.core.DataStore

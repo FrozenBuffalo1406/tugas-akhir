@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+
+    <!-- Warna latar: Hitam Transparan (80% Opacity) -->
+    <!-- Kode #CC000000 artinya Alpha=CC (sekitar 80%), RGB=000000 (Hitam) -->
+    <solid android:color="#CC000000" />
+
+    <!-- Radius sudut biar gak tajem (rounded corners) -->
+    <corners android:radius="4dp" />
+
+    <!-- Opsional: Padding internal biar teks gak nempel pinggir -->
+    <padding
+        android:left="4dp"
+        android:top="2dp"
+        android:right="4dp"
+        android:bottom="2dp" />
+</shape>

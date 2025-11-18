@@ -13,7 +13,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:padding="16dp"
-        android:text="Riwayat Bacaan"
+        android:text="@string/readings_history"
         android:textSize="20sp"
         android:textStyle="bold"
         app:layout_constraintEnd_toEndOf="parent"
@@ -28,7 +28,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/tvHistoryTitle"
-        tools:listitem="@layout/item_history" /> <!-- Fix: list item yang bener -->
+        tools:listitem="@layout/item_history" />
 
     <!-- INI LOADING CIRCLE-nya -->
     <ProgressBar

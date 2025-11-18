@@ -6,6 +6,7 @@ import com.tugasakhir.ecgappnative.data.repository.MainRepository
 import com.tugasakhir.ecgappnative.ui.auth.LoginViewModel
 import com.tugasakhir.ecgappnative.ui.auth.RegisterViewModel
 import com.tugasakhir.ecgappnative.ui.history.HistoryViewModel
+import com.tugasakhir.ecgappnative.ui.history.detail.HistoryDetailViewModel
 import com.tugasakhir.ecgappnative.ui.main.DashboardViewModel
 import com.tugasakhir.ecgappnative.ui.profile.ProfileViewModel
 
@@ -30,6 +31,9 @@ class ViewModelFactory(private val repository: MainRepository) : ViewModelProvid
             }
             modelClass.isAssignableFrom(ProfileViewModel::class.java) -> {
                 ProfileViewModel(repository) as T
+            }
+            modelClass.isAssignableFrom(HistoryDetailViewModel::class.java) -> {
+                HistoryDetailViewModel(repository) as T
             }
             modelClass.isAssignableFrom(HistoryViewModel::class.java) -> {
                 HistoryViewModel(repository) as T

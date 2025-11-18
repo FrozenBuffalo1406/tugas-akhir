@@ -240,10 +240,14 @@ def refresh_token():
     """
     identity = int(get_jwt_identity())
     new_access_token = create_access_token(identity=identity)
-    app.logger.info(f"Token di-refresh untuk user {identity}")
-    return jsonify(access_token=new_access_token), 200
-
-
+    new_refresh_token = create_refresh_token(identity=identity)
+    
+    app.logger.info(f"Token Rotated untuk user {identity}")
+    #refresh token rotation
+    return jsonify(
+        access_token=new_access_token, 
+        refresh_token=new_refresh_token
+    ), 200
 
 @app.route('/api/v1/register-device', methods=['POST'])
 def register_device():

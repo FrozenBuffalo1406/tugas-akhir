@@ -12,7 +12,10 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-class HistoryAdapter : ListAdapter<HistoryEntity, HistoryAdapter.ViewHolder>(HistoryDiffCallback()) {
+// PERUBAHAN: Tambahin 'onItemClick' di constructor
+class HistoryAdapter(
+    private val onItemClick: (HistoryEntity) -> Unit
+) : ListAdapter<HistoryEntity, HistoryAdapter.ViewHolder>(HistoryDiffCallback()) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val binding = ItemHistoryBinding.inflate(LayoutInflater.from(parent.context), parent, false)
@@ -23,27 +26,30 @@ class HistoryAdapter : ListAdapter<HistoryEntity, HistoryAdapter.ViewHolder>(His
         val item = getItem(position)
         holder.bind(item)
     }
-    class ViewHolder(private val binding: ItemHistoryBinding) : RecyclerView.ViewHolder(binding.root) {
+
+    inner class ViewHolder(private val binding: ItemHistoryBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(item: HistoryEntity) {
             binding.tvClassification.text = item.classification
-            binding.tvHeartRate.text = "${item.heartRate ?: "--"} BPM"
+            binding.tvHeartRate.text = "${item.heartRate?.toInt() ?: "--"} BPM"
 
-            // Format timestamp
+            // Format timestamp (amanin biar gak crash kalo format aneh)
             try {
-                val instant = Instant.parse(item.timestamp.replace("Z", "+00:00"))
+                val cleanTimestamp = item.timestamp.replace("Z", "+00:00")
+                val instant = Instant.parse(cleanTimestamp)
                 val localDateTime = LocalDateTime.ofInstant(instant, ZoneId.systemDefault())
-                binding.tvTimestamp.text = localDateTime.format(DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm:ss"))
+                binding.tvTimestamp.text = localDateTime.format(DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm"))
             } catch (_: Exception) {
                 binding.tvTimestamp.text = item.timestamp
             }
 
-            // (Opsional) Tambahin OnClickListener jika perlu
-            // binding.root.setOnClickListener { ... }
+            // INI DIA: Pasang listener biar bisa diklik!
+            binding.root.setOnClickListener {
+                onItemClick(item)
+            }
         }
     }
 }
 
-// DiffUtil biar RecyclerView update-nya pinter
 class HistoryDiffCallback : DiffUtil.ItemCallback<HistoryEntity>() {
     override fun areItemsTheSame(oldItem: HistoryEntity, newItem: HistoryEntity): Boolean {
         return oldItem.id == newItem.id

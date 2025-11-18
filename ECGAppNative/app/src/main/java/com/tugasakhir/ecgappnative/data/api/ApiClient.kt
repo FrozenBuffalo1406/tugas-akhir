@@ -2,7 +2,7 @@ package com.tugasakhir.ecgappnative.data.api
 
 import android.content.Context
 import android.util.Log
-import com.tugasakhir.ecgappnative.utils.SessionManager // <-- Pake kelas lo
+import com.tugasakhir.ecgappnative.data.utils.SessionManager // <-- Pake kelas lo
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import okhttp3.*
@@ -106,7 +106,7 @@ class TokenAuthenticator(
                 if (tokenResponse.isSuccessful && tokenResponse.body() != null) {
                     val newAccessToken = tokenResponse.body()!!.accessToken
                     Log.i("TokenAuthenticator", "Token refreshed successfully!")
-
+                    Log.e("DEBUG_TOKEN", "Token Baru Diterima: $accessToken")
                     // 3. Simpen token baru ke preferences
                     sessionManager.saveAccessToken(newAccessToken)
 

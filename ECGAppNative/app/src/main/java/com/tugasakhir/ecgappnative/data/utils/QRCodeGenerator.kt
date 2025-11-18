@@ -1,4 +1,4 @@
-package com.tugasakhir.ecgappnative.utils
+package com.tugasakhir.ecgappnative.data.utils
 
 import android.graphics.Bitmap
 import android.graphics.Color
