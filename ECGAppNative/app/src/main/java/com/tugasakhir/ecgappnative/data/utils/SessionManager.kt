@@ -41,10 +41,10 @@ class SessionManager(private val context: Context) {
             preferences[USER_NAME_KEY] = name
         }
     }
-
-    suspend fun saveAccessToken(token: String) {
+    suspend fun saveTokens(accessToken: String, refreshToken: String) {
         context.dataStore.edit { preferences ->
-            preferences[TOKEN_KEY] = token
+            preferences[TOKEN_KEY] = accessToken
+            preferences[REFRESH_TOKEN_KEY] = refreshToken
         }
     }
 

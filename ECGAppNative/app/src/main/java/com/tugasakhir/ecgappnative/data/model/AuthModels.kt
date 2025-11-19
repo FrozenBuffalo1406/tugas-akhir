@@ -14,5 +14,6 @@ data class AuthResponse(
 )
 
 data class RefreshResponse(
-    @SerializedName("access_token") val accessToken: String
+    @SerializedName("access_token") val accessToken: String,
+    @SerializedName("refresh_token") val refreshToken: String
 )

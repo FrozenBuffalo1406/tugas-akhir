@@ -5,28 +5,29 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fitsSystemWindows="true"
-    android:background="#F0F2F5"
+    android:background="?android:attr/windowBackground"
     tools:context=".ui.history.detail.HistoryDetailActivity">
 
-    <!-- Toolbar Buatan (gantiin ActionBar) -->
     <com.google.android.material.appbar.AppBarLayout
         android:id="@+id/appBarLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:theme="@style/Theme.ECGApp.AppBarOverlay"
         app:layout_constraintTop_toTopOf="parent">
 
         <androidx.appcompat.widget.Toolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            android:background="?attr/colorPrimary">
+            android:background="?attr/colorPrimary"
+            app:popupTheme="@style/Theme.ECGApp.PopupOverlay">
 
             <ImageView
                 android:id="@+id/ivBack"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:src="@android:drawable/ic_menu_close_clear_cancel"
-                app:tint="@android:color/white"
+                app:tint="?attr/colorOnPrimary"
                 android:contentDescription="Kembali"
                 android:layout_gravity="start"/>
 
@@ -36,7 +37,7 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
                 android:text="Detail Bacaan"
-                android:textColor="@android:color/white"
+                android:textColor="?attr/colorOnPrimary"
                 android:textAppearance="@style/TextAppearance.AppCompat.Title" />
 
         </androidx.appcompat.widget.Toolbar>
@@ -65,12 +66,13 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <!-- Card Info -->
-            <androidx.cardview.widget.CardView
+            <!-- Card Info: Ganti ke MaterialCardView biar warnanya adaptif -->
+            <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 app:cardCornerRadius="8dp"
-                app:cardElevation="4dp">
+                app:cardElevation="4dp"
+                app:cardBackgroundColor="?attr/colorSurface"> <!-- Putih di Day, Abu di Night -->
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -84,8 +86,8 @@
                         android:layout_height="wrap_content"
                         android:textAppearance="@style/TextAppearance.AppCompat.Display1"
                         android:textStyle="bold"
-                        android:textColor="@color/design_default_color_primary"
-                        tools:text="Normal" />
+                        android:textColor="?attr/colorPrimary"
+                        tools:text="Normal" /> <!-- Pake warna tema (Sage/Lilac) -->
 
                     <TextView
                         android:id="@+id/tvTimestamp"
@@ -94,6 +96,8 @@
                         android:layout_marginTop="8dp"
                         android:drawablePadding="8dp"
                         android:gravity="center_vertical"
+                        android:textColor="?android:attr/textColorSecondary"
+                        app:drawableTint="?android:attr/textColorSecondary"
                         tools:text="18 Nov 2025, 14:30:00"
                         app:drawableStartCompat="@android:drawable/ic_menu_recent_history" />
 
@@ -104,19 +108,22 @@
                         android:layout_marginTop="8dp"
                         android:drawablePadding="8dp"
                         android:gravity="center_vertical"
+                        android:textColor="?android:attr/textColorSecondary"
+                        app:drawableTint="?android:attr/textColorSecondary"
                         tools:text="75 BPM"
-                        app:drawableStartCompat="@android:drawable/ic_menu_send" /> <!-- Ganti icon ini nanti -->
+                        app:drawableStartCompat="@android:drawable/ic_menu_send" />
 
                 </LinearLayout>
-            </androidx.cardview.widget.CardView>
+            </com.google.android.material.card.MaterialCardView>
 
             <!-- Card Grafik -->
-            <androidx.cardview.widget.CardView
+            <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
                 app:cardCornerRadius="8dp"
-                app:cardElevation="4dp">
+                app:cardElevation="4dp"
+                app:cardBackgroundColor="?attr/colorSurface">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -128,9 +135,10 @@
                         android:layout_height="wrap_content"
                         android:text="Gelombang EKG"
                         android:padding="16dp"
+                        android:textColor="?android:attr/textColorPrimary"
                         android:textAppearance="@style/TextAppearance.AppCompat.Title"/>
 
-                    <!-- INI DIA TEMPAT GRAFIKNYA -->
+                    <!-- Grafik EKG -->
                     <com.github.mikephil.charting.charts.LineChart
                         android:id="@+id/lineChart"
                         android:layout_width="match_parent"
@@ -139,7 +147,7 @@
 
                 </LinearLayout>
 
-            </androidx.cardview.widget.CardView>
+            </com.google.android.material.card.MaterialCardView>
         </LinearLayout>
     </ScrollView>
 

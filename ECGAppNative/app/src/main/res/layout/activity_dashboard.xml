@@ -80,7 +80,8 @@
         app:fabSize="mini"
         app:layout_constraintBottom_toTopOf="@+id/fabQr"
         app:layout_constraintEnd_toEndOf="@+id/fabScan"
-        app:tint="@android:color/white"
+        app:tint="@color/white"
+        app:backgroundTint="@color/sage_500"
         tools:ignore="ClassNameCheck"
         tools:visibility="visible" />
     <TextView
@@ -110,9 +111,10 @@
         android:src="@drawable/ic_qr_code"
         android:visibility="gone"
         app:fabSize="mini"
+        app:tint="@color/white"
+        app:backgroundTint="@color/sage_500"
         app:layout_constraintBottom_toTopOf="@+id/fabScan"
         app:layout_constraintEnd_toEndOf="@+id/fabScan"
-        app:tint="@android:color/white"
         tools:ignore="ClassNameCheck"
         tools:visibility="visible" />
     <TextView
@@ -135,11 +137,13 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_margin="16dp"
+
         android:contentDescription="@string/tambah_aksi"
         android:src="@android:drawable/ic_input_add"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:tint="@android:color/white"
+        app:tint="@color/white"
+        app:backgroundTint="@color/sage_500"
         tools:ignore="ClassNameCheck" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

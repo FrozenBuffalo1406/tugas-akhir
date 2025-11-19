@@ -105,10 +105,11 @@ class TokenAuthenticator(
 
                 if (tokenResponse.isSuccessful && tokenResponse.body() != null) {
                     val newAccessToken = tokenResponse.body()!!.accessToken
+                    val newRefreshToken = tokenResponse.body()!!.refreshToken
+
                     Log.i("TokenAuthenticator", "Token refreshed successfully!")
-                    Log.e("DEBUG_TOKEN", "Token Baru Diterima: $accessToken")
                     // 3. Simpen token baru ke preferences
-                    sessionManager.saveAccessToken(newAccessToken)
+                    sessionManager.saveTokens(newAccessToken, newRefreshToken)
 
                     // 4. Ulangi request yang gagal tadi pake token baru
                     response.request.newBuilder()

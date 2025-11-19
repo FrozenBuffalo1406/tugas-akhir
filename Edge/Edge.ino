@@ -145,7 +145,10 @@ void setup() {
         Serial.printf("[PROV] QR Payload: %s\n", provPayload.c_str());
 
         display.clearDisplay();
-        drawQRCode(provPayload, 3, SSD1306_WHITE);
+        // 1. Isi seluruh layar jadi PUTIH (Background)
+        display.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, SSD1306_WHITE); 
+        // 2. Gambar QR Code warna HITAM
+        drawQRCode(provPayload, 3, SSD1306_BLACK);
         display.display();
 
         while (WiFi.status() != WL_CONNECTED) { delay(1000); }
@@ -196,6 +199,13 @@ void loop() {
     if (!provisioningDone) {
         return; 
     }
+    if (!isQrCodeActive) { 
+        if (millis() - lastDisplayUpdate > 50) {
+            lastDisplayUpdate = millis();
+            updateOLEDStatus(); 
+            display.display(); 
+        }
+    }
 
     if (millis() - lastDisplayUpdate > 50) {
         lastDisplayUpdate = millis();
@@ -203,7 +213,7 @@ void loop() {
         display.display(); // Kirim buffer ke layar
     }
     
-    if (isSensorActive) {
+    if (isSensorActive && !isQrCodeActive) {
         if (millis() - lastSampleTime >= sampleInterval) {
             lastSampleTime = millis();
             bool signalValid = isSignalValid(LO_PLUS_PIN, LO_MINUS_PIN);
@@ -235,6 +245,7 @@ void loop() {
                     }
                     Serial.println(emaFilteredValue); // Kita log yang alus
                     ecgBeatBuffer[bufferIndex] = emaFilteredValue; // Simpen yang alus
+
                     updateOLEDPlotter(emaFilteredValue);
                     // Serial.println(rawValue);
                     // ecgBeatBuffer[bufferIndex] = filteredBeat;
@@ -245,12 +256,10 @@ void loop() {
                 Serial.println("[WARNING] Elektroda terlepas!");
                 currentStatus = "Electrode Off";
                 }
-
                 if (bufferIndex < SIGNAL_LENGTH) {
                     updateOLEDPlotter(0.0); // Gambar garis lurus (nilai 0)
                     ecgBeatBuffer[bufferIndex] = 0.0; // Isi buffer dgn 0
                     emaFilteredValue = 0.0;
-                    
                     bufferIndex++;
                 }
             }
@@ -275,7 +284,9 @@ void loop() {
 
             plotX = 0;
             lastPlotY = -1;
-            display.fillRect(0, 0, SCREEN_WIDTH, PLOT_HEIGHT, SSD1306_BLACK); // Hanya bersihkan area plotter
+            if (!isQrCodeActive) {
+                display.fillRect(0, 0, SCREEN_WIDTH, PLOT_HEIGHT, SSD1306_BLACK);
+            }
             delay(1000);
         }
     }

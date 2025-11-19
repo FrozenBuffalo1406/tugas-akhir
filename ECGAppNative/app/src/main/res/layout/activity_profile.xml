@@ -16,7 +16,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Profil Saya"
+            android:text="@string/profil_saya"
             android:textSize="24sp"
             android:textStyle="bold" />
 
@@ -40,7 +40,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
-            android:text="Pindai untuk menambah kerabat:"
+            android:text="@string/pindai_untuk_menambah_kerabat"
             android:textStyle="bold"/>
 
         <ImageView

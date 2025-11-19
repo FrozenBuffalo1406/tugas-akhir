@@ -1,8 +1,6 @@
 #global
 .dockerignore
-Dockerfile
-docker-compose.yml
-ecg-api.tar
+./ecg-api.tar
 
 #backend
 .venv/

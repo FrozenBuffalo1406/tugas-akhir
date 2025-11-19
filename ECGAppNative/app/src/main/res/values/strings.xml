@@ -8,4 +8,6 @@
     <string name="tambah_aksi">Tambah Aksi</string>
     <string name="dashboard">Dashboard</string>
     <string name="scan_qr">Scan QR</string>
+    <string name="profil_saya">Profil Saya</string>
+    <string name="pindai_untuk_menambah_kerabat">Pindai untuk menambah kerabat:</string>
 </resources>

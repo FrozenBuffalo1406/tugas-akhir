@@ -38,5 +38,6 @@ interface ApiService {
     suspend fun getProfile(): Response<ProfileResponse>
 
     @POST("auth/refresh")
-    suspend fun refreshToken(@Header("Authorization") refreshToken: String): Response<RefreshResponse>
+    suspend fun refreshToken(
+        @Header("Authorization") refreshToken: String): Response<RefreshResponse>
 }
