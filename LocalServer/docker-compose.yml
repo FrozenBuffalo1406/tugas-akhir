@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
     container_name: ecg_server
     ports:
-      - "5000:8000" # Map port 5000 VPS ke port 8000 kontainer
+      - "5000:8080" # Map port 5000 VPS ke port 8000 kontainer
     volumes:
       - ./backend/data:/app/data
       - ./backend/logs:/app/logs
@@ -17,7 +17,8 @@ services:
       - /etc/localtime:/etc/localtime:ro
     environment:
       # Kamu bisa set environment variable di sini
-      - DATABASE_URL=sqlite:////app/data/ecg_data.db # Path DB di dalam kontainer
+      # - DATABASE_URL=sqlite:////app/data/ecg_data.db # Path DB di dalam kontainer
+      - DATABASE_PATH=/app/data/ecg_data.db
       - TZ=Asia/Jakarta
       # - MODEL_PATH=/app/model/beat_classifier_model_FINAL.keras
     restart: always # Otomatis restart jika crash, kecuali dihentikan manual
