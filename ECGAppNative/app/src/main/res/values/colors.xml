@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- PRIMARY: SAGE GREEN (Kesehatan, Ketenangan) -->
+    <color name="sage_500">#7C9A92</color> <!-- Warna Utama -->
+    <color name="sage_700">#4F6F67</color> <!-- Varian Gelap (Status Bar) -->
+    <color name="sage_200">#AECBC4</color> <!-- Varian Terang (Buat Dark Mode) -->
+
+    <!-- SECONDARY: LILAC (Aksen Modern) -->
+    <color name="lilac_200">#E6E6FA</color> <!-- Lavender muda -->
+    <color name="lilac_500">#B39DDB</color> <!-- Ungu kalem -->
+    <color name="lilac_700">#836FA9</color> <!-- Ungu tua -->
+
+    <!-- NEUTRALS (Background & Surface) -->
+    <color name="black">#1F2933</color> <!-- Gak pure black, biar elegan (Gunmetal) -->
+    <color name="white">#FFFFFF</color>
+
+    <!-- Background Khusus Day Mode (Off-White biar gak silau) -->
+    <color name="background_day">#F8F9FA</color>
+    <color name="surface_day">#FFFFFF</color>
+
+    <!-- Background Khusus Night Mode (Dark Grey biar mata gak pedih) -->
+    <color name="background_night">#121212</color>
+    <color name="surface_night">#1E1E1E</color>
+
+    <!-- Text Colors -->
+    <color name="text_primary_day">#1F2933</color>
+    <color name="text_secondary_day">#52606D</color>
+    <color name="text_primary_night">#E4E7EB</color>
+    <color name="text_secondary_night">#9AA5B1</color>
+
+    <!-- Error/Alert (Tetep butuh merah buat jantung/peringatan) -->
+    <color name="error_red">#EF5350</color>
+</resources>

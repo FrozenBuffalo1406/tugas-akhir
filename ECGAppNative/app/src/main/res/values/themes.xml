@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tema Dasar (Pake Action Bar) -->
+    <style name="Theme.ECGApp" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+        <!-- Primary: Sage Green -->
+        <item name="colorPrimary">@color/sage_500</item>
+        <item name="colorPrimaryVariant">@color/sage_700</item>
+        <item name="colorOnPrimary">@color/white</item>
+
+        <!-- Secondary: Lilac (Buat FAB, Checkbox, Toggle) -->
+        <item name="colorSecondary">@color/lilac_500</item>
+        <item name="colorSecondaryVariant">@color/lilac_700</item>
+        <item name="colorOnSecondary">@color/white</item>
+
+        <!-- Background & Surface -->
+        <item name="android:windowBackground">@color/background_day</item>
+        <item name="colorSurface">@color/surface_day</item>
+        <item name="colorOnSurface">@color/text_primary_day</item>
+
+        <!-- Status Bar Color -->
+        <item name="android:statusBarColor">@color/sage_700</item>
+    </style>
+
+    <!-- Tema KHUSUS Dashboard/Profile (Tanpa Action Bar) -->
+    <style name="Theme.ECGApp.NoActionBar" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/sage_500</item>
+        <item name="colorPrimaryVariant">@color/sage_700</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorSecondary">@color/lilac_500</item>
+        <item name="colorSecondaryVariant">@color/lilac_700</item>
+        <item name="colorOnSecondary">@color/white</item>
+
+        <item name="android:windowBackground">@color/background_day</item>
+        <item name="colorSurface">@color/surface_day</item>
+        <item name="colorOnSurface">@color/text_primary_day</item>
+
+        <item name="android:statusBarColor">@color/sage_700</item>
+        <!-- Biar ikon di status bar jadi gelap kalo backgroundnya terang (opsional) -->
+        <!-- <item name="android:windowLightStatusBar">true</item> -->
+    </style>
+
+    <!-- Overlay Toolbar (Teks Putih) -->
+    <style name="Theme.ECGApp.AppBarOverlay" parent="ThemeOverlay.AppCompat.Dark.ActionBar" />
+
+    <!-- Overlay Popup (Menu titik tiga background putih) -->
+    <style name="Theme.ECGApp.PopupOverlay" parent="ThemeOverlay.AppCompat.Light" />
+</resources>
