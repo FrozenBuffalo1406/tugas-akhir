@@ -9,8 +9,10 @@ WORKDIR /app
 # libatlas-base-dev & gfortran wajib buat Scipy/Numpy biar gak error compile
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    libatlas-base-dev \
+    libopenblas-dev \
+    liblapack-dev \
     gfortran \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 # 2. Buat User (Security Best Practice)
