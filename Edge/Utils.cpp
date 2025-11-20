@@ -193,6 +193,8 @@ void showDeviceInfoQR() {
     doc["mac_address"] = mac.c_str();
     String payload;
     serializeJson(doc, payload);
+
+    Serial.printf("[QR] Payload: %s\n", payload.c_str()); // Debug
     
     display.clearDisplay();
     display.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, SSD1306_WHITE);

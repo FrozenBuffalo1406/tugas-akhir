@@ -267,7 +267,7 @@ void loop() {
         
         if (bufferIndex >= SIGNAL_LENGTH) {
             currentStatus = "Analyzing..."; // Update status sebelum ngirim
-            updateOLEDStatus();
+            if (!isQrCodeActive) updateOLEDStatus();
 
             String timestamp = getTimestamp();
             if (timestamp != "0000-00-00T00:00:00+07:00") { 
@@ -284,9 +284,7 @@ void loop() {
 
             plotX = 0;
             lastPlotY = -1;
-            if (!isQrCodeActive) {
-                display.fillRect(0, 0, SCREEN_WIDTH, PLOT_HEIGHT, SSD1306_BLACK);
-            }
+            if (!isQrCodeActive) display.fillRect(0, 0, SCREEN_WIDTH, PLOT_HEIGHT, SSD1306_BLACK);
             delay(1000);
         }
     }
@@ -297,13 +295,22 @@ void loop() {
 }
 
 void drawQRCode(String text, int startY, int16_t fgColor) {
-    uint8_t qrcodeData[qrcode_getBufferSize(3)]; // Version 3
+    // [FIX] Naikkan buffer ke versi 4 jaga-jaga, tapi kita targetkan versi 3
+    uint8_t qrcodeData[qrcode_getBufferSize(4)]; 
+    
+    // Init Text. 
+    // Coba pakai ECC_MEDIUM biar lebih tahan error kalau kamera burem, 
+    // TAPI kalau payload kepanjangan, turunin ke ECC_LOW.
+    // Dengan payload CSV pendek tadi, ECC_MEDIUM harusnya muat di Version 3.
     qrcode_initText(&qrcode, qrcodeData, 3, ECC_LOW, text.c_str());
 
-    int moduleSize = 2; // Ukuran tiap kotak QR (dalam pixel)
+    int moduleSize = 2; 
     int qrSize = qrcode.size * moduleSize;
-    int xOffset = (SCREEN_WIDTH - qrSize) / 2; // Center horizontal
+    int xOffset = (SCREEN_WIDTH - qrSize) / 2;
+    
+    // Proteksi biar Y gak negatif (kalau QR kegedean)
     int yOffset = startY;
+    if (yOffset < 0) yOffset = 0;
 
     for (uint8_t y = 0; y < qrcode.size; y++) {
         for (uint8_t x = 0; x < qrcode.size; x++) {
@@ -347,7 +354,7 @@ void updateOLEDPlotter(float value) {
 void updateOLEDStatus() {
     int statusBarY = PLOT_HEIGHT + 2; // Posisi Y di bawah plotter
     int statusBarHeight = 16;
-
+    
     display.fillRect(0, statusBarY, SCREEN_WIDTH, statusBarHeight, SSD1306_BLACK);
     display.setTextSize(1);
     display.setCursor(0, statusBarY); // Taruh kursor di kiri

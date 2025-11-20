@@ -1,9 +1,11 @@
 import os
 import sys
 import logging
-from logging.handlers import RotatingFileHandler
 import time
 import numpy as np
+import uuid
+
+from logging.handlers import RotatingFileHandler
 from datetime import datetime, timedelta
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -84,7 +86,7 @@ def load_all_models():
     app.logger.info("="*50)
 
 class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     email = db.Column(db.String(120), unique=True, nullable=False)
     name = db.Column(db.String(100), nullable=True) 
     password_hash = db.Column(db.String(128), nullable=False)
@@ -108,7 +110,7 @@ class Device(db.Model):
     mac_address = db.Column(db.String(17), unique=True, nullable=False)
     device_id_str = db.Column(db.String(80), unique=True, nullable=False)
     device_name = db.Column(db.String(100), nullable=True, default="My ECG Device")
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True) 
+    user_id = db.Column(db.String(36), db.ForeignKey('user.id'), nullable=True) 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     readings = db.relationship('ECGReading', backref='device', lazy=True, cascade="all, delete-orphan")
 
@@ -122,8 +124,8 @@ class ECGReading(db.Model):
 
 class MonitoringRelationship(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    monitor_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False) # ID Kerabat
-    patient_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False) # ID Pasien
+    monitor_id = db.Column(db.String(36), db.ForeignKey('user.id'), nullable=False) # ID Kerabat
+    patient_id = db.Column(db.String(36), db.ForeignKey('user.id'), nullable=False) # ID Pasien
     __table_args__ = (db.UniqueConstraint('monitor_id', 'patient_id', name='_monitor_patient_uc'),)
 
 def preprocess_input(data: list, target_length: int = 1024):
