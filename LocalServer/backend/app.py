@@ -236,20 +236,19 @@ def login_user():
 @app.route('/api/v1/auth/refresh', methods=['POST'])
 @jwt_required(refresh=True)
 def refresh_token():
-    """
-    Endpoint ini cuma bisa diakses pake REFRESH TOKEN.
-    Kalo sukses, dia ngasih ACCESS TOKEN baru.
-    """
-    identity = get_jwt_identity()
-    access_token = create_access_token(identity=str(user.id)) 
-    refresh_token = create_refresh_token(identity=str(user.id))
-    
-    app.logger.info(f"Token Rotated untuk user {identity}")
-    #refresh token rotation
-    return jsonify(
-        access_token=new_access_token, 
-        refresh_token=new_refresh_token
-    ), 200
+    try:
+        current_user_id = get_jwt_identity()
+        user = User.query.get(current_user_id) 
+        if not user:
+            app.logger.warning(f"Refresh gagal: User ID {current_user_id} tidak ditemukan.")
+            return jsonify({"error": "User tidak valid/ditemukan"}), 401
+        access_token = create_access_token(identity=str(user.id))
+        role = get_dynamic_role(user) 
+        app.logger.info(f"Token Rotated untuk user {user.id}")
+        return jsonify(access_token=access_token, role=role)
+    except Exception as e:
+        app.logger.error(f"Error refresh token: {e}", exc_info=True)
+        return jsonify({"error": "Token refresh tidak valid"}), 401
 
 @app.route('/api/v1/register-device', methods=['POST'])
 def register_device():
@@ -566,7 +565,7 @@ def add_correlative():
     scanned_code = data.get('scannedCode')
     if not scanned_code: return jsonify({"error": "'scannedCode' dibutuhkan"}), 400
 
-    try: patient_id = int(scanned_code)
+    try: patient_id = scanned_code
     except ValueError: return jsonify({"error": "Kode QR tidak valid"}), 400
         
     patient = User.query.get(patient_id)
@@ -609,7 +608,7 @@ def remove_correlative():
         action_type = "berhenti memantau"
 
     elif 'monitor_id' in data:
-        try: monitor_id_to_remove = int(data['monitor_id'])
+        try: monitor_id_to_remove = data['monitor_id']
         except ValueError: return jsonify({"error": "monitor_id tidak valid"}), 400
             
         relationship_to_remove = MonitoringRelationship.query.filter_by(
