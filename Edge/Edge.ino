@@ -44,7 +44,7 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 QRCode qrcode;
 
 
-void drawQRCode(String text, int startY, int16_t fgColor);
+void drawQRCode(String text, int startY);
 void updateOLEDPlotter(float value);
 void updateOLEDStatus();
 
@@ -145,10 +145,8 @@ void setup() {
         Serial.printf("[PROV] QR Payload: %s\n", provPayload.c_str());
 
         display.clearDisplay();
-        // 1. Isi seluruh layar jadi PUTIH (Background)
-        display.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, SSD1306_WHITE); 
         // 2. Gambar QR Code warna HITAM
-        drawQRCode(provPayload, 3, SSD1306_BLACK);
+        drawQRCode(provPayload, -1);
         display.display();
 
         while (WiFi.status() != WL_CONNECTED) { delay(1000); }
@@ -294,24 +292,43 @@ void loop() {
     }
 }
 
-void drawQRCode(String text, int startY, int16_t fgColor) {
-    // [FIX] Naikkan buffer ke versi 4 jaga-jaga, tapi kita targetkan versi 3
-    uint8_t qrcodeData[qrcode_getBufferSize(4)]; 
-    
-    // Init Text. 
-    // Coba pakai ECC_MEDIUM biar lebih tahan error kalau kamera burem, 
-    // TAPI kalau payload kepanjangan, turunin ke ECC_LOW.
-    // Dengan payload CSV pendek tadi, ECC_MEDIUM harusnya muat di Version 3.
+// [FILE: Edge.ino]
+
+// Hapus parameter warna, kita bikin standar OLED (Black on White) biar tajam
+void drawQRCode(String text, int startY) {
+    // 1. Setup QR Code (Versi 3)
+    uint8_t qrcodeData[qrcode_getBufferSize(3)];
     qrcode_initText(&qrcode, qrcodeData, 3, ECC_LOW, text.c_str());
 
-    int moduleSize = 2; 
-    int qrSize = qrcode.size * moduleSize;
-    int xOffset = (SCREEN_WIDTH - qrSize) / 2;
+    int moduleSize = 2; // 1 titik = 2x2 pixel
+    int qrRawSize = qrcode.size * moduleSize; // Ukuran mentah QR (misal 58px)
+    int padding = 2; // Margin putih di sekeliling QR (Quiet Zone)
     
-    // Proteksi biar Y gak negatif (kalau QR kegedean)
+    // Hitung posisi X biar tengah
+    int xOffset = (SCREEN_WIDTH - qrRawSize) / 2;
+    
+    // Hitung posisi Y (bisa custom startY, atau otomatis tengah kalo startY -1)
     int yOffset = startY;
-    if (yOffset < 0) yOffset = 0;
+    if (startY == -1) {
+        yOffset = (SCREEN_HEIGHT - qrRawSize) / 2;
+    }
 
+    // 2. [LOGIKA BARU] Gambar KOTAK PUTIH sebagai Background (Padding Kontras)
+    // Kita gambar kotak sedikit lebih besar dari QR-nya
+    int bgX = xOffset - padding;
+    int bgY = yOffset - padding;
+    int bgW = qrRawSize + (padding * 2);
+    int bgH = qrRawSize + (padding * 2);
+    
+    // Pastikan gak gambar di luar layar (Clamping)
+    if (bgX < 0) bgX = 0;
+    if (bgY < 0) bgY = 0;
+    if (bgW > SCREEN_WIDTH) bgW = SCREEN_WIDTH;
+    if (bgH > SCREEN_HEIGHT) bgH = SCREEN_HEIGHT;
+
+    display.fillRect(bgX, bgY, bgW, bgH, SSD1306_WHITE); // Background PUTIH
+
+    // 3. Gambar Modul QR Code (HITAM)
     for (uint8_t y = 0; y < qrcode.size; y++) {
         for (uint8_t x = 0; x < qrcode.size; x++) {
             if (qrcode_getModule(&qrcode, x, y)) {
@@ -320,7 +337,7 @@ void drawQRCode(String text, int startY, int16_t fgColor) {
                     yOffset + (y * moduleSize), 
                     moduleSize, 
                     moduleSize, 
-                    fgColor
+                    SSD1306_BLACK // Modul HITAM
                 );
             }
         }

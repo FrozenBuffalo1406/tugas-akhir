@@ -14,7 +14,7 @@ data class DeviceQRModel( // Helper buat parsing QR Device
 
 data class UnclaimRequest(@SerializedName("device_id_str") val deviceIdStr: String)
 data class AddCorrelativeRequest(@SerializedName("scannedCode") val scannedCode: String)
-data class RemoveCorrelativeRequest(val patientId: Int? = null, val monitorId: Int? = null)
+data class RemoveCorrelativeRequest(val patientId: String? = null, val monitorId: String? = null)
 
 data class GeneralResponse(val message: String?, val error: String?, val status: String?)
 
@@ -22,7 +22,7 @@ data class GeneralResponse(val message: String?, val error: String?, val status:
 data class DashboardResponse(val data: List<DashboardItem>)
 data class DashboardItem(
     val type: String, // "self" atau "correlative"
-    @SerializedName("user_id") val userId: Int,
+    @SerializedName("user_id") val userId: String,
     @SerializedName("user_email") val userEmail: String,
     @SerializedName("device_name") val deviceName: String,
     @SerializedName("heartRate") val heartRate: Double?,
@@ -58,4 +58,4 @@ data class ProfileResponse(
     @SerializedName("correlatives_who_monitor_me") val monitoredBy: List<UserProfile>,
     @SerializedName("patients_i_monitor") val patients: List<UserProfile>
 )
-data class UserProfile(val id: Int, val email: String, val name: String?)
+data class UserProfile(val id: String, val email: String, val name: String?)

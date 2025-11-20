@@ -451,10 +451,7 @@ def get_history():
     
     user_id_to_check = request.args.get('userId')
     if not user_id_to_check: return jsonify({"error": "Parameter 'userId' dibutuhkan"}), 400
-    
-    try: user_id_to_check = int(user_id_to_check)
-    except ValueError: return jsonify({"error": "Parameter 'userId' harus berupa angka"}), 400
-
+    user_id_to_check = user_id_to_check
     user_to_check = User.query.get(user_id_to_check)
     if not user_to_check: return jsonify({"error": "User yang diminta tidak ditemukan"}), 404
 
@@ -598,7 +595,7 @@ def remove_correlative():
     action_type = None
 
     if 'patient_id' in data:
-        try: patient_id_to_remove = int(data['patient_id'])
+        try: patient_id_to_remove = data['patient_id']
         except ValueError: return jsonify({"error": "patient_id tidak valid"}), 400
         
         relationship_to_remove = MonitoringRelationship.query.filter_by(

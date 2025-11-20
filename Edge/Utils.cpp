@@ -30,7 +30,7 @@ extern WiFiClientSecure client;
 extern Adafruit_SSD1306 display;
 String currentStatus = "Initializing...";
 
-void drawQRCode(String text, int startY, int16_t fgColor);
+void drawQRCode(String text, int startY);
 
 String getDeviceIdentity() {
 
@@ -196,9 +196,24 @@ void showDeviceInfoQR() {
 
     Serial.printf("[QR] Payload: %s\n", payload.c_str()); // Debug
     
-    display.clearDisplay();
-    display.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, SSD1306_WHITE);
-    drawQRCode(payload, (SCREEN_HEIGHT - 42) / 2, SSD1306_BLACK);
+    // --- HITUNG UKURAN ---
+    // Kita paksa visualisasi seolah-olah Version 3 (29 modul)
+    // Ditambah margin (quiet zone) misal 2 modul kiri-kanan-atas-bawah
+    // Total butuh: (29 + 4) * 2 pixel = 66 pixel. 
+    // Karena layar cuma 64px, margin kita tipisin jadi 1 modul atau 0 (QR mentok atas bawah)
+    
+    int moduleSize = 2;
+    int qrRawSize = 29 * moduleSize; // 58 pixel
+    int bgSize = 64; // Tinggi kotak background (full height layar)
+    int xBgOffset = (SCREEN_WIDTH - bgSize) / 2; // Posisi X kotak background biar tengah
+
+    display.clearDisplay(); // Layar dasar hitam
+    display.fillRect(xBgOffset, 0, bgSize, bgSize, SSD1306_WHITE);
+
+    // 2. Gambar QR Code HITAM di atas kotak putih tadi
+    // Warna QR = SSD1306_BLACK
+    drawQRCode(payload, (SCREEN_HEIGHT - 58) / 2, SSD1306_BLACK);
+    
     display.display();
 }
 
@@ -252,14 +267,14 @@ void handleMultiFunctionButton() {
   else {
     if (buttonWasPressed) {
       // Kita cek ini lepasnya gara-gara apa?
-
-      if (longPressTriggered) {} 
+      if (longPressTriggered) {
+        sensorWakeUp();
+      } 
       else if (mediumPressTriggered) {
         // Ini berarti user baru aja selesai nampilin QR Code (tahan 3 detik terus lepas).
         // Jangan ngapa-ngapain, biarin QR-nya tetep tampil.
         Serial.println("[BTN] Lepas tombol (Selesai aktifin QR).");
-        display.clearDisplay()
-        
+        display.clearDisplay();
       } 
       else {
         if (isQrCodeActive) {

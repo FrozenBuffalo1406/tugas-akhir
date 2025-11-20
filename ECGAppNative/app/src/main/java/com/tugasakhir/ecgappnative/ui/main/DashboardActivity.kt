@@ -184,7 +184,7 @@ class DashboardActivity : BaseActivity() {
         try {
             val deviceQr = gson.fromJson(content, DeviceQRModel::class.java)
             // Validasi isi JSON (harus punya mac dan id)
-            if (deviceQr != null && !deviceQr.mac.isNullOrEmpty() && !deviceQr.id.isNullOrEmpty()) {
+            if (deviceQr != null && !deviceQr.mac.isEmpty() && !deviceQr.id.isEmpty()) {
                 showClaimDeviceDialog(deviceQr)
                 return
             }
@@ -192,10 +192,9 @@ class DashboardActivity : BaseActivity() {
             // Lanjut cek tipe lain
         }
 
-        // 2. Coba Parsing sebagai KORELATIF (Angka User ID)
+        // 2. Coba Parsing sebagai KORELATIF (String)
         try {
-            // Tes konversi ke Int biar yakin itu ID user
-            content.toInt()
+            content
             showAddCorrelativeDialog(content)
             return
         } catch (e: NumberFormatException) {

@@ -15,8 +15,8 @@ import java.time.format.DateTimeFormatter
 
 class DashboardAdapter(
     private val onUnclaimClick: (String) -> Unit,
-    private val onRemoveCorrelativeClick: (Int) -> Unit,
-    private val onItemClick: (Int) -> Unit
+    private val onRemoveCorrelativeClick: (String) -> Unit,
+    private val onItemClick: (String) -> Unit
 ) : ListAdapter<DashboardItem, DashboardAdapter.ViewHolder>(DashboardDiffCallback()) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -33,8 +33,8 @@ class DashboardAdapter(
         fun bind(
             item: DashboardItem,
             onUnclaimClick: (String) -> Unit,
-            onRemoveCorrelativeClick: (Int) -> Unit,
-            onItemClick: (Int) -> Unit
+            onRemoveCorrelativeClick: (String) -> Unit,
+            onItemClick: (String) -> Unit
         ) {
             binding.tvDeviceName.text = item.deviceName
             binding.tvUserEmail.text = item.userEmail

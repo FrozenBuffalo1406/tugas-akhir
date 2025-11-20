@@ -7,7 +7,7 @@ data class RegisterRequest(val email: String, val password: String, val name: St
 data class AuthResponse(
     @SerializedName("access_token") val accessToken: String?,
     @SerializedName("refresh_token") val refreshToken: String?,
-    @SerializedName("user_id") val userId: Int?,
+    @SerializedName("user_id") val userId: String?,
     val role: String?,
     val name: String?,
     val error: String?
