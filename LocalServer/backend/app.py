@@ -238,7 +238,7 @@ def refresh_token():
     Endpoint ini cuma bisa diakses pake REFRESH TOKEN.
     Kalo sukses, dia ngasih ACCESS TOKEN baru.
     """
-    identity = int(get_jwt_identity())
+    identity = get_jwt_identity()
     access_token = create_access_token(identity=str(user.id)) 
     refresh_token = create_refresh_token(identity=str(user.id))
     
@@ -271,7 +271,7 @@ def register_device():
 @app.route('/api/v1/claim-device', methods=['POST'])
 @jwt_required()
 def claim_device():
-    current_user_id = int(get_jwt_identity())
+    current_user_id = get_jwt_identity()
     data = request.get_json()
     mac = data.get('mac_address')
     device_id_str = data.get('device_id_str')
@@ -289,7 +289,7 @@ def claim_device():
 @app.route('/api/v1/unclaim-device', methods=['POST'])
 @jwt_required()
 def unclaim_device():
-    current_user_id = int(get_jwt_identity())
+    current_user_id = get_jwt_identity()
     data = request.get_json()
     device_id_str = data.get('device_id_str')
     if not device_id_str: return jsonify({"error": "'device_id_str' dibutuhkan"}), 400
@@ -374,7 +374,7 @@ def analyze_ecg():
 @app.route('/api/v1/profile', methods=['GET'])
 @jwt_required()
 def get_profile():
-    current_user_id = int(get_jwt_identity())
+    current_user_id = get_jwt_identity()
     user = User.query.get(current_user_id)
     if not user: return jsonify({"error": "User tidak ditemukan"}), 404
     
@@ -404,7 +404,7 @@ def get_profile():
 @app.route('/api/v1/dashboard', methods=['GET'])
 @jwt_required()
 def get_dashboard():
-    current_user_id = int(get_jwt_identity())
+    current_user_id = get_jwt_identity()
     user = User.query.get(current_user_id)
     if not user: return jsonify({"error": "User tidak ditemukan"}), 404
 
@@ -446,7 +446,7 @@ def get_dashboard():
 @app.route('/api/v1/history', methods=['GET'])
 @jwt_required()
 def get_history():
-    current_user_id = int(get_jwt_identity())
+    current_user_id = get_jwt_identity()
     
     user_id_to_check = request.args.get('userId')
     if not user_id_to_check: return jsonify({"error": "Parameter 'userId' dibutuhkan"}), 400
@@ -506,7 +506,7 @@ def get_history():
 @jwt_required()
 def get_reading_detail(reading_id):
     # --- [FIX] Ubah identity jadi INTEGER ---
-    current_user_id = int(get_jwt_identity())
+    current_user_id = get_jwt_identity()
     # --------------------------------------
     
     app.logger.info(f"User {current_user_id} meminta detail untuk reading ID: {reading_id}")
@@ -559,7 +559,7 @@ def get_reading_detail(reading_id):
 @app.route('/api/v1/correlatives/add', methods=['POST'])
 @jwt_required()
 def add_correlative():
-    current_user_id = int(get_jwt_identity())
+    current_user_id = get_jwt_identity()
     data = request.get_json()
     scanned_code = data.get('scannedCode')
     if not scanned_code: return jsonify({"error": "'scannedCode' dibutuhkan"}), 400
@@ -590,7 +590,7 @@ def add_correlative():
 @app.route('/api/v1/correlatives/remove', methods=['DELETE'])
 @jwt_required()
 def remove_correlative():
-    current_user_id = int(get_jwt_identity())
+    current_user_id = get_jwt_identity()
     data = request.get_json()
     
     relationship_to_remove = None
