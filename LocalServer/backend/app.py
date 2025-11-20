@@ -239,8 +239,8 @@ def refresh_token():
     Kalo sukses, dia ngasih ACCESS TOKEN baru.
     """
     identity = int(get_jwt_identity())
-    new_access_token = create_access_token(identity=identity)
-    new_refresh_token = create_refresh_token(identity=identity)
+    access_token = create_access_token(identity=str(user.id)) 
+    refresh_token = create_refresh_token(identity=str(user.id))
     
     app.logger.info(f"Token Rotated untuk user {identity}")
     #refresh token rotation
