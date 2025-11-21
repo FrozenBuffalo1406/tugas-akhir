@@ -19,8 +19,8 @@ class HistoryViewModel(private val repository: MainRepository) : ViewModel() {
     private val _toastMessage = MutableLiveData<String>()
     val toastMessage: LiveData<String> = _toastMessage
 
-    fun loadHistory(userId: Int) {
-        if (userId == -1) {
+    fun loadHistory(userId: String) {
+        if (userId.isEmpty()) {
             _toastMessage.value = "User ID tidak valid"
             return
         }

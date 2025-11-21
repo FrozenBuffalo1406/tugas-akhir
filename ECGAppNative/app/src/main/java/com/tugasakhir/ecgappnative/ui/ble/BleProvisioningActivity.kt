@@ -15,20 +15,25 @@ import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope // <-- JANGAN LUPA IMPORT INI
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.espressif.provisioning.ESPConstants
-import com.espressif.provisioning.ESPDevice 
+import com.espressif.provisioning.ESPDevice
 import com.espressif.provisioning.ESPProvisionManager
 import com.espressif.provisioning.listeners.BleScanListener
 import com.espressif.provisioning.listeners.ProvisionListener
 import com.tugasakhir.ecgappnative.databinding.ActivityBleProvisioningBinding
 import com.tugasakhir.ecgappnative.ui.BaseActivity
+import kotlinx.coroutines.Dispatchers // <-- INI JUGA
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch      // <-- INI JUGA
+import kotlinx.coroutines.withContext // <-- INI JUGA
 
 @SuppressLint("MissingPermission")
 class BleProvisioningActivity : BaseActivity() {
 
     private lateinit var binding: ActivityBleProvisioningBinding
-    private lateinit var bleDeviceAdapter: BleDeviceAdapter // Adapter lo yang terpisah
+    private lateinit var bleDeviceAdapter: BleDeviceAdapter
     private val scanResults = mutableMapOf<String, BluetoothDevice>()
     private lateinit var provisionManager: ESPProvisionManager
     private var selectedDevice: BluetoothDevice? = null
@@ -134,12 +139,14 @@ class BleProvisioningActivity : BaseActivity() {
 
             override fun onPeripheralFound(device: BluetoothDevice?, scanResult: ScanResult?) {
                 if (device != null && device.name != null) {
+                    // Tangkap UUID dari hasil scan
                     val uuids = scanResult?.scanRecord?.serviceUuids
                     if (!uuids.isNullOrEmpty()) {
                         val primaryUuid = uuids[0].toString()
                         deviceUuids[device.address] = primaryUuid // Simpen UUID-nya!
                         Log.d("BLE_Scan", "UUID saved for ${device.address}: $primaryUuid")
                     }
+
                     if (!scanResults.containsKey(device.address)) {
                         Log.d("BLE_Scan", "Found: ${device.name}")
                         scanResults[device.address] = device
@@ -170,102 +177,115 @@ class BleProvisioningActivity : BaseActivity() {
         setLoadingUi(false, "Scan dihentikan.")
     }
 
-    // --- INI DIA YANG KITA BENERIN ---
+    // --- PERBAIKAN UTAMA DI SINI ---
     private fun sendCredentials() {
-
         val device = selectedDevice
         val pop = binding.etPop.text.toString()
         val ssid = binding.etSsid.text.toString()
         val password = binding.etPassword.text.toString()
+
+        // Ambil UUID yang udah disimpen pas scan
         val primaryUuid = device?.let { deviceUuids[it.address] }
+
+        if (device == null) { showToast("Pilih perangkat dulu"); return }
         if (primaryUuid.isNullOrEmpty()) {
             showToast("Gagal mendapatkan UUID Device. Coba scan ulang.")
             return
         }
-
         if (pop.isEmpty()) { showToast("PoP wajib diisi"); return }
         if (ssid.isEmpty()) { showToast("SSID wajib diisi"); return }
 
-        setLoadingUi(true, "Menghubungkan & Mengirim...")
+        setLoadingUi(true, "Menghubungkan...")
 
-        // 1. Minta manager bikinin object ESPDevice
-        // Kita pake SECURITY_1 karena ada PoP (Proof of Possession)
-        val espDevice: ESPDevice = provisionManager.createESPDevice(
-            ESPConstants.TransportType.TRANSPORT_BLE,
-            ESPConstants.SecurityType.SECURITY_1
-        )
-        try {
-            // 4. PANGGIL PAKE 2 PARAMETER (DEVICE + UUID)
-            espDevice.connectBLEDevice(device, primaryUuid) // <--- INI YANG DIBENERIN
-        } catch (e: Exception) {
-            Log.e("Prov", "Gagal connect BLE", e)
-            setLoadingUi(false, "Gagal Connect BLE")
-            return
-        }
+        // --- PINDAHIN PROSES BERAT KE BACKGROUND THREAD (IO) ---
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val espDevice: ESPDevice = provisionManager.createESPDevice(
+                    ESPConstants.TransportType.TRANSPORT_BLE,
+                    ESPConstants.SecurityType.SECURITY_1
+                )
 
-        // 3. Set PoP-nya
-        espDevice.proofOfPossession = pop
+                // Connect ini BERAT, makanya harus di IO
+                espDevice.connectBLEDevice(device, primaryUuid)
+                espDevice.proofOfPossession = pop
 
-        // 4. Panggil provision di objek espDevice (BUKAN di manager)
-        espDevice.provision(ssid, password, object : ProvisionListener {
-
-            override fun createSessionFailed(e: Exception?) {
-                runOnUiThread {
-                    Log.e("Prov", "Session Failed", e)
-                    setLoadingUi(false, "Gagal sesi. Cek PoP!")
-                    showToast("Gagal Connect. PoP Salah?")
+                withContext(Dispatchers.Main) {
+                    binding.tvProvisionStatus.text = "Status: Menunggu koneksi stabil..."
                 }
-            }
+                delay(2000)
 
-            override fun wifiConfigSent() {
-                runOnUiThread {
-                    binding.tvProvisionStatus.text = "Status: Config terkirim. Menunggu apply..."
-                }
-            }
+                // Balik ke logic Provisioning (Listener-nya bakal switch ke UI sendiri biasanya)
+                // Tapi biar aman, kita panggil dari sini
+                espDevice.provision(ssid, password, object : ProvisionListener {
 
-            override fun wifiConfigFailed(e: Exception?) {
-                runOnUiThread {
-                    setLoadingUi(false, "Gagal mengirim config WiFi")
-                }
-            }
-
-            override fun wifiConfigApplied() {
-                runOnUiThread {
-                    binding.tvProvisionStatus.text = "Status: ESP sedang mencoba connect WiFi..."
-                }
-            }
-
-            override fun wifiConfigApplyFailed(e: Exception?) {
-                runOnUiThread {
-                    setLoadingUi(false, "ESP gagal apply config")
-                }
-            }
-
-            override fun provisioningFailedFromDevice(reason: ESPConstants.ProvisionFailureReason?) {
-                runOnUiThread {
-                    val msg = when(reason) {
-                        ESPConstants.ProvisionFailureReason.AUTH_FAILED -> "Password WiFi Salah!"
-                        ESPConstants.ProvisionFailureReason.NETWORK_NOT_FOUND -> "SSID Tidak Ditemukan!"
-                        else -> "Gagal: ${reason?.name}"
+                    override fun createSessionFailed(e: Exception?) {
+                        runOnUiThread {
+                            Log.e("Prov", "Session Failed", e)
+                            setLoadingUi(false, "Gagal sesi. Cek PoP!")
+                            showToast("Gagal Connect. PoP Salah?")
+                        }
                     }
-                    setLoadingUi(false, msg)
-                    showToast(msg)
-                }
-            }
 
-            override fun deviceProvisioningSuccess() {
-                runOnUiThread {
-                    setLoadingUi(false, "SUKSES! Perangkat Online.")
-                    showToast("Provisioning Berhasil!")
-                }
-            }
+                    override fun wifiConfigSent() {
+                        runOnUiThread {
+                            binding.tvProvisionStatus.text = "Status: Config terkirim. Menunggu apply..."
+                        }
+                    }
 
-            override fun onProvisioningFailed(e: Exception?) {
-                runOnUiThread {
-                    setLoadingUi(false, "Gagal: ${e?.message}")
+                    override fun wifiConfigFailed(e: Exception?) {
+                        runOnUiThread {
+                            setLoadingUi(false, "Gagal mengirim config WiFi")
+                        }
+                    }
+
+                    override fun wifiConfigApplied() {
+                        runOnUiThread {
+                            binding.tvProvisionStatus.text = "Status: ESP sedang mencoba connect WiFi..."
+                        }
+                    }
+
+                    override fun wifiConfigApplyFailed(e: Exception?) {
+                        runOnUiThread {
+                            setLoadingUi(false, "ESP gagal apply config")
+                        }
+                    }
+
+                    override fun provisioningFailedFromDevice(reason: ESPConstants.ProvisionFailureReason?) {
+                        runOnUiThread {
+                            val msg = when(reason) {
+                                ESPConstants.ProvisionFailureReason.AUTH_FAILED -> "Password WiFi Salah!"
+                                ESPConstants.ProvisionFailureReason.NETWORK_NOT_FOUND -> "SSID Tidak Ditemukan!"
+                                else -> "Gagal: ${reason?.name}"
+                            }
+                            setLoadingUi(false, msg)
+                            showToast(msg)
+                        }
+                    }
+
+                    override fun deviceProvisioningSuccess() {
+                        runOnUiThread {
+                            setLoadingUi(false, "SUKSES! Perangkat Online.")
+                            showToast("Provisioning Berhasil!")
+                        }
+                    }
+
+                    override fun onProvisioningFailed(e: Exception?) {
+                        runOnUiThread {
+                            setLoadingUi(false, "Gagal: ${e?.message}")
+                        }
+                    }
+                })
+
+            } catch (e: Exception) {
+                e.printStackTrace()
+                // Kalau ada error pas connect, handle di UI Thread
+                withContext(Dispatchers.Main) {
+                    Log.e("Prov", "Gagal connect BLE", e)
+                    setLoadingUi(false, "Gagal Connect BLE: ${e.message}")
+                    showToast("Error Connect BLE")
                 }
             }
-        })
+        }
     }
 
     private fun setLoadingUi(isLoading: Boolean, message: String) {
@@ -283,7 +303,7 @@ class BleProvisioningActivity : BaseActivity() {
         super.onDestroy()
         stopBleScan()
         if (::provisionManager.isInitialized) {
-             provisionManager.stopBleScan()
+            provisionManager.stopBleScan()
         }
     }
 }

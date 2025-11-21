@@ -3,8 +3,6 @@ package com.tugasakhir.ecgappnative.ui.main
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
-import android.view.Menu
-import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
 import androidx.activity.viewModels
@@ -20,6 +18,7 @@ import com.tugasakhir.ecgappnative.R
 import com.tugasakhir.ecgappnative.data.model.*
 import com.tugasakhir.ecgappnative.databinding.ActivityDashboardBinding
 import com.tugasakhir.ecgappnative.ui.BaseActivity
+import com.tugasakhir.ecgappnative.ui.ble.BlePairingActivity
 import com.tugasakhir.ecgappnative.ui.ble.BleProvisioningActivity // Pastiin package BLE lo bener
 import com.tugasakhir.ecgappnative.ui.history.HistoryActivity
 import com.tugasakhir.ecgappnative.ui.profile.ProfileActivity
@@ -96,28 +95,30 @@ class DashboardActivity : BaseActivity() {
             startActivity(Intent(this, ProfileActivity::class.java))
         }
 
-        // --- LOGIKA FAB MENU ---
-
-        // 1. Tombol Utama (+) -> Buka/Tutup Menu
         binding.fabScan.setOnClickListener {
             if (isFabMenuOpen) closeFabMenu() else openFabMenu()
         }
 
-        // 2. Tombol QR -> Scan QR
         binding.fabQr.setOnClickListener {
             closeFabMenu()
             startQrScanner()
         }
 
-        // 3. Tombol BLE -> Provisioning
         binding.fabBle.setOnClickListener {
             closeFabMenu()
-            // Sesuaikan package import Activity ini
             try {
                 startActivity(Intent(this, BleProvisioningActivity::class.java))
             } catch (e: Exception) {
                 // Jaga-jaga kalo activity belum ke-register di Manifest atau salah import
                 showToast("Fitur BLE belum siap: ${e.message}")
+            }
+        }
+        binding.fabBlePair.setOnClickListener {
+            closeFabMenu()
+            try {
+                startActivity(Intent(this, BlePairingActivity::class.java))
+            } catch (e: Exception) {
+                showToast("Fitur Pairing belum siap")
             }
         }
     }
@@ -140,6 +141,13 @@ class DashboardActivity : BaseActivity() {
         binding.fabBle.isClickable = true
         binding.fabBle.animate().translationY(-resources.getDimension(R.dimen.fab_margin_2)).alpha(1f).setDuration(300).start()
         binding.labelFabBle.animate().translationY(-resources.getDimension(R.dimen.fab_margin_2)).alpha(1f).setDuration(300).start()
+
+        //munculin BLE pairing
+        binding.fabBlePair.visibility = View.VISIBLE
+        binding.labelFabBlePair.visibility = View.VISIBLE
+        binding.fabBlePair.isClickable = true
+        binding.fabBlePair.animate().translationY(-resources.getDimension(R.dimen.fab_margin_2)).alpha(1f).setDuration(300).start()
+        binding.labelFabBlePair.animate().translationY(-resources.getDimension(R.dimen.fab_margin_2)).alpha(1f).setDuration(300).start()
     }
 
     private fun closeFabMenu() {
@@ -162,6 +170,14 @@ class DashboardActivity : BaseActivity() {
         }.start()
         binding.labelFabBle.animate().translationY(0f).alpha(0f).setDuration(300).withEndAction {
             binding.labelFabBle.visibility = View.GONE
+        }.start()
+
+        binding.fabBlePair.animate().translationY(0f).alpha(0f).setDuration(300).withEndAction {
+            binding.fabBlePair.visibility = View.GONE
+            binding.fabBlePair.isClickable = false
+        }.start()
+        binding.labelFabBlePair.animate().translationY(0f).alpha(0f).setDuration(300).withEndAction {
+            binding.labelFabBlePair.visibility = View.GONE
         }.start()
     }
 

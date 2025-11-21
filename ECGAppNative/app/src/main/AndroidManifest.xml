@@ -71,6 +71,10 @@
             android:name=".ui.ble.BleProvisioningActivity"
             android:label="Provisioning"
             android:theme="@style/Theme.ECGApp.NoActionBar" />
+        <activity
+            android:name=".ui.ble.BlePairingActivity"
+            android:label="Pairing Device"
+            android:theme="@style/Theme.ECGApp.NoActionBar" />
 
         <activity
             android:name="com.journeyapps.barcodescanner.CaptureActivity"

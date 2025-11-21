@@ -110,6 +110,7 @@ class Device(db.Model):
     mac_address = db.Column(db.String(17), unique=True, nullable=False)
     device_id_str = db.Column(db.String(80), unique=True, nullable=False)
     device_name = db.Column(db.String(100), nullable=True, default="My ECG Device")
+    active_patient_id = db.Column(db.String(36), db.ForeignKey('user.id'), nullable=True)
     user_id = db.Column(db.String(36), db.ForeignKey('user.id'), nullable=True) 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     readings = db.relationship('ECGReading', backref='device', lazy=True, cascade="all, delete-orphan")
@@ -121,6 +122,7 @@ class ECGReading(db.Model):
     heart_rate = db.Column(db.Float, nullable=True)
     processed_ecg_data = db.Column(db.JSON, nullable=False) 
     device_id = db.Column(db.Integer, db.ForeignKey('device.id'), nullable=False)
+    user_id = db.Column(db.String(36), db.ForeignKey('user.id'), nullable=True)
 
 class MonitoringRelationship(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -301,6 +303,51 @@ def unclaim_device():
     app.logger.info(f"User {current_user_id} melepaskan kepemilikan device {device_id_str}.")
     return jsonify({"message": f"Kepemilikan device {device_id_str} berhasil dilepaskan."}), 200
 
+@app.route('/api/v1/device/set-patient', methods=['POST'])
+@jwt_required()
+def set_device_patient():
+    current_user_id = get_jwt_identity()
+    data = request.get_json()
+    device_id_str = data.get('device_id_str')
+    target_patient_id = data.get('patient_id') # ID orang yang mau diperiksa
+
+    if not device_id_str or not target_patient_id:
+        return jsonify({"error": "Data tidak lengkap"}), 400
+
+    device = Device.query.filter_by(device_id_str=device_id_str).first()
+    if not device: return jsonify({"error": "Device tidak ditemukan"}), 404
+
+    # Validasi: Cuma pemilik alat yang boleh ganti mode
+    if device.user_id != current_user_id:
+        return jsonify({"error": "Hanya pemilik alat yang bisa mengatur mode pasien"}), 403
+
+    # Simpan status: Alat ini lagi dipake sama target_patient_id
+    device.active_patient_id = target_patient_id
+    db.session.commit()
+    
+    return jsonify({"message": f"Mode alat diubah. Sekarang merekam data untuk User ID: {target_patient_id}"}), 200
+
+@app.route('/api/v1/device/reset-patient', methods=['POST'])
+@jwt_required()
+def reset_device_patient():
+    current_user_id = get_jwt_identity()
+    data = request.get_json()
+    device_id_str = data.get('device_id_str')
+
+    if not device_id_str: return jsonify({"error": "device_id_str dibutuhkan"}), 400
+
+    device = Device.query.filter_by(device_id_str=device_id_str).first()
+    if not device: return jsonify({"error": "Device tidak ditemukan"}), 404
+
+    if device.user_id != current_user_id:
+        return jsonify({"error": "Akses ditolak"}), 403
+
+    # Balikin ke mode default (Merekam buat owner)
+    device.active_patient_id = None
+    db.session.commit()
+    
+    return jsonify({"message": "Mode alat kembali ke Pemilik (Owner)."}), 200
+
 @app.route('/api/v1/analyze-ecg', methods=['POST'])
 def analyze_ecg():
     data = request.get_json()
@@ -342,7 +389,7 @@ def analyze_ecg():
         arrhythmia_classes = BEAT_LABELS 
         prediction_result = arrhythmia_classes[predicted_index]
         heart_rate = calculate_heart_rate(processed_input.flatten()) 
-
+        
         try:
             if timestamp_str and "+" in timestamp_str: timestamp_str = timestamp_str.split("+")[0]
             parsed_timestamp = datetime.fromisoformat(timestamp_str)
@@ -350,12 +397,23 @@ def analyze_ecg():
             app.logger.warning(f"Timestamp tidak valid dari {device_id_str}: {timestamp_str}. Menggunakan waktu server.")
             parsed_timestamp = datetime.utcnow()
 
+        final_user_id = None
+        if device.active_patient_id:
+            # Kalo ada active_patient, berarti lagi dipinjem -> Masuk ke history peminjam
+            final_user_id = device.active_patient_id
+            app.logger.info(f"Menyimpan data untuk ACTIVE PATIENT: {final_user_id}")
+        else:
+            # Kalo gak ada, berarti default -> Masuk ke history owner
+            final_user_id = device.user_id
+            app.logger.info(f"Menyimpan data untuk OWNER: {final_user_id}")
+        
         new_reading = ECGReading(
             timestamp=parsed_timestamp,
             prediction=prediction_result,
             heart_rate=heart_rate,
             processed_ecg_data=processed_input.flatten().tolist(), 
-            device_id=device.id
+            device_id=device.id,
+            user_id=final_user_id
         )
         db.session.add(new_reading)
         db.session.commit()
@@ -465,7 +523,7 @@ def get_history():
     if not can_view:
         return jsonify({"error": "Anda tidak punya izin untuk melihat data histori ini"}), 403
 
-    query = db.session.query(ECGReading).join(Device).filter(Device.user_id == user_id_to_check)
+    query = db.session.query(ECGReading).filter(ECGReading.user_id == user_id_to_check)
     
     filter_day = request.args.get('filterDay')
     filter_class = request.args.get('filterClass')

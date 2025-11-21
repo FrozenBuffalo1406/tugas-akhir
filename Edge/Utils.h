@@ -10,5 +10,7 @@ void sendDataToServer(const char* url, const char* deviceId, const char* timesta
 void sensorSleep();
 void sensorWakeUp();
 void handleMultiFunctionButton();
+void startBLEPairingService();
+void stopBLEPairingService();
 
 #endif

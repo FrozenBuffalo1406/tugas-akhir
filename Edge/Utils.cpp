@@ -5,6 +5,10 @@
 #include <WiFiClientSecure.h>
 #include <Adafruit_SSD1306.h>
 
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEServer.h>
+
 #include "utils.h"
 #include "config.h"
 #include "time.h"
@@ -21,7 +25,10 @@ extern unsigned long buttonPressStartTime;
 extern bool longPressTriggered;
 extern bool mediumPressTriggered;
 extern bool buttonWasPressed;
+
+extern bool isBleActive;
 extern bool isQrCodeActive;
+
 extern String DEVICE_ID;
 extern float dcBlockerW;
 extern float dcBlockerX;
@@ -31,6 +38,7 @@ extern Adafruit_SSD1306 display;
 String currentStatus = "Initializing...";
 
 void drawQRCode(String text, int startY);
+void updateOLEDboot(String value)
 
 String getDeviceIdentity() {
 
@@ -183,6 +191,89 @@ void sensorWakeUp() {
     }
 }
 
+void handleMultiFunctionButton() {
+  // --- TOMBOL SEDANG DITEKAN (LOW) ---
+  if (digitalRead(FACTORY_RESET_PIN) == LOW) {
+
+    if (buttonPressStartTime == 0) {
+      Serial.println("[BTN] Tombol terdeteksi...");
+      buttonPressStartTime = millis();
+      longPressTriggered = false;
+      mediumPressTriggered = false;
+      buttonWasPressed = true;
+    }
+
+    unsigned long pressDuration = millis() - buttonPressStartTime;
+
+    // --- [LOGIKA BARU] Tahan 3 Detik -> LANGSUNG AKTIFKAN QR ---
+    if (pressDuration > MEDIUM_PRESS_DURATION_MS && !mediumPressTriggered && !longPressTriggered) {
+        Serial.println("\n[BTN] Tahanan 3 detik tercapai. Mengaktifkan QR Code...");
+      
+      // Langsung eksekusi di sini (gak nunggu lepas)
+    //   showDeviceInfoQR(); 
+    //   isQrCodeActive = true; 
+        isBleActive = true;
+        startBLEPairingService()
+        currentStatus = "BLE Active";
+        mediumPressTriggered = true; // Kunci biar gak dieksekusi ulang
+    }
+
+    // --- Cek Tahan 7 Detik (Long Press) -> RESET ---
+    if (!longPressTriggered && pressDuration > LONG_PRESS_DURATION_MS) {
+      Serial.println("\n[BTN] Tahanan 7 detik terdeteksi. Melakukan factory reset...");
+      
+      nvs_flash_erase();
+      Serial.println("[RESET] Kredensial Wi-Fi dihapus. Perangkat akan restart.");
+      
+      // Kasih feedback visual dikit sebelum mati
+      updateOLEDboot("RESETTING...");
+      ESP.restart();
+      longPressTriggered = true;
+    }
+
+  } 
+  // --- TOMBOL DILEPAS (HIGH) ---
+  else {
+    if (buttonWasPressed) {
+      // Kita cek ini lepasnya gara-gara apa?
+      if (longPressTriggered) {} 
+      else if (mediumPressTriggered) {
+        // Ini berarti user baru aja selesai nampilin QR Code (tahan 3 detik terus lepas).
+        // Jangan ngapa-ngapain, biarin QR-nya tetep tampil.
+        Serial.println("[BTN] Lepas tombol (Selesai aktifin QR).");
+        currentStatus = "BLE PAIR (r)"
+        display.clearDisplay();
+      } 
+      else {
+        if (isQrCodeActive) {
+          // Kalo QR lagi nyala, klik ini buat BALIK NORMAL
+          Serial.println("[BTN] Klik cepat. Menutup QR Code...");
+          // Balikin layar ke mode normal (hitam)
+          display.clearDisplay();
+          display.fillRect(0, 0, SCREEN_WIDTH, PLOT_HEIGHT, SSD1306_BLACK);
+          
+          sensorWakeUp(); 
+          currentStatus = "Waking Up";
+
+        } else {
+          // Kalo QR lagi mati, klik ini buat WAKEUP SENSOR biasa
+          Serial.println("[BTN] Klik cepat. Sensor wakeup...");
+          sensorWakeUp();
+          currentStatus = "Waking Up";
+        }
+      }
+    }
+    
+    // Reset semua flag
+    buttonPressStartTime = 0;
+    buttonWasPressed = false;
+    mediumPressTriggered = false; 
+    longPressTriggered = false;
+  }
+}
+
+
+
 void showDeviceInfoQR() {
     Serial.println("[QR] Menampilkan Info Perangkat via QR Code...");
     
@@ -207,103 +298,8 @@ void showDeviceInfoQR() {
     int bgSize = 64; // Tinggi kotak background (full height layar)
     int xBgOffset = (SCREEN_WIDTH - bgSize) / 2; // Posisi X kotak background biar tengah
 
-    display.clearDisplay(); // Layar dasar hitam
-    display.fillRect(xBgOffset, 0, bgSize, bgSize, SSD1306_WHITE);
-
-    // 2. Gambar QR Code HITAM di atas kotak putih tadi
-    // Warna QR = SSD1306_BLACK
-    drawQRCode(payload, (SCREEN_HEIGHT - 58) / 2, SSD1306_BLACK);
-    
+    drawQRCode(payload, -1);
     display.display();
-}
-
-void handleMultiFunctionButton() {
-  // --- TOMBOL SEDANG DITEKAN (LOW) ---
-  if (digitalRead(FACTORY_RESET_PIN) == LOW) {
-
-    if (buttonPressStartTime == 0) {
-      Serial.println("[BTN] Tombol terdeteksi...");
-      buttonPressStartTime = millis();
-      longPressTriggered = false;
-      mediumPressTriggered = false;
-      buttonWasPressed = true;
-    }
-
-    unsigned long pressDuration = millis() - buttonPressStartTime;
-
-    // --- [LOGIKA BARU] Tahan 3 Detik -> LANGSUNG AKTIFKAN QR ---
-    if (pressDuration > MEDIUM_PRESS_DURATION_MS && !mediumPressTriggered && !longPressTriggered) {
-      Serial.println("\n[BTN] Tahanan 3 detik tercapai. Mengaktifkan QR Code...");
-      
-      // Langsung eksekusi di sini (gak nunggu lepas)
-      showDeviceInfoQR(); 
-      isQrCodeActive = true; 
-      currentStatus = "QR Active";
-      
-      mediumPressTriggered = true; // Kunci biar gak dieksekusi ulang
-    }
-
-    // --- Cek Tahan 7 Detik (Long Press) -> RESET ---
-    if (!longPressTriggered && pressDuration > LONG_PRESS_DURATION_MS) {
-      Serial.println("\n[BTN] Tahanan 7 detik terdeteksi. Melakukan factory reset...");
-      
-      nvs_flash_erase();
-      Serial.println("[RESET] Kredensial Wi-Fi dihapus. Perangkat akan restart.");
-      
-      // Kasih feedback visual dikit sebelum mati
-      display.clearDisplay();
-      display.setCursor(0,0);
-      display.setTextColor(SSD1306_WHITE);
-      display.println("RESETTING...");
-      display.display();
-
-      delay(1000);
-      ESP.restart();
-      longPressTriggered = true;
-    }
-
-  } 
-  // --- TOMBOL DILEPAS (HIGH) ---
-  else {
-    if (buttonWasPressed) {
-      // Kita cek ini lepasnya gara-gara apa?
-      if (longPressTriggered) {
-        sensorWakeUp();
-      } 
-      else if (mediumPressTriggered) {
-        // Ini berarti user baru aja selesai nampilin QR Code (tahan 3 detik terus lepas).
-        // Jangan ngapa-ngapain, biarin QR-nya tetep tampil.
-        Serial.println("[BTN] Lepas tombol (Selesai aktifin QR).");
-        display.clearDisplay();
-      } 
-      else {
-        if (isQrCodeActive) {
-          // Kalo QR lagi nyala, klik ini buat BALIK NORMAL
-          Serial.println("[BTN] Klik cepat. Menutup QR Code...");
-          isQrCodeActive = false;
-          
-          // Balikin layar ke mode normal (hitam)
-          display.clearDisplay();
-          display.fillRect(0, 0, SCREEN_WIDTH, PLOT_HEIGHT, SSD1306_BLACK);
-          
-          sensorWakeUp(); 
-          currentStatus = "Waking Up";
-
-        } else {
-          // Kalo QR lagi mati, klik ini buat WAKEUP SENSOR biasa
-          Serial.println("[BTN] Klik cepat. Sensor wakeup...");
-          sensorWakeUp();
-          currentStatus = "Waking Up";
-        }
-      }
-    }
-    
-    // Reset semua flag
-    buttonPressStartTime = 0;
-    buttonWasPressed = false;
-    mediumPressTriggered = false; 
-    longPressTriggered = false;
-  }
 }
 
 

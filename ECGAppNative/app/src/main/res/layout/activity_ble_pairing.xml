@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:fitsSystemWindows="true"
+    android:padding="16dp"
+    android:background="?android:attr/windowBackground"
+    tools:context=".ui.ble.BlePairingActivity">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Pairing &amp; Klaim Device"
+        android:textAppearance="@style/TextAppearance.AppCompat.Title"
+        android:textColor="?attr/colorPrimary"
+        android:layout_marginBottom="16dp"/>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Pastikan Bluetooth menyala dan device di dekat Anda. Fitur ini akan membaca data dari device dan otomatis mengklaimnya."
+        android:textColor="?android:attr/textColorSecondary"
+        android:layout_marginBottom="16dp"/>
+
+    <Button
+        android:id="@+id/btnScanBle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Mulai Scan"
+        android:backgroundTint="?attr/colorPrimary"/>
+
+    <ProgressBar
+        android:id="@+id/progressBar"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:indeterminate="true"
+        android:visibility="gone"
+        tools:visibility="visible"
+        android:layout_marginTop="8dp"/>
+
+    <TextView
+        android:id="@+id/tvStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Status: Menunggu scan..."
+        android:textAlignment="center"
+        android:layout_marginTop="8dp"/>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvBleDevices"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="16dp"
+        android:background="@drawable/label_background"
+        tools:listitem="@layout/item_ble_device"/>
+
+</LinearLayout>

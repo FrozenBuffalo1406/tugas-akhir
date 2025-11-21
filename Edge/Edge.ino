@@ -23,13 +23,18 @@ float* ecgBeatBuffer = NULL;
 int bufferIndex = 0;
 unsigned long lastSampleTime = 0;
 const long sampleInterval = 1000 / SAMPLING_RATE;
+
 bool isSensorActive = true;
 unsigned long lastActivityTime = 0;
+
 unsigned long buttonPressStartTime = 0;
 bool longPressTriggered = false;
 bool mediumPressTriggered = false;
 bool buttonWasPressed = false;
+
 bool isQrCodeActive = false;
+bool isBleActive = false;
+
 float dcBlockerW = 0.0;
 float dcBlockerX = 0.0;
 float emaFilteredValue = 0.0;
@@ -37,8 +42,8 @@ float emaFilteredValue = 0.0;
 extern String currentStatus; // Ambil dari Utils.cpp
 int plotX = 0; // Posisi X plotter saat ini
 int lastPlotY = -1; // Posisi Y sebelumnya
-bool provisioningDone = false; // Flag penanda provisioning
 unsigned long lastDisplayUpdate = 0;
+bool provisioningDone = false; // Flag penanda provisioning
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 QRCode qrcode;
@@ -47,6 +52,7 @@ QRCode qrcode;
 void drawQRCode(String text, int startY);
 void updateOLEDPlotter(float value);
 void updateOLEDStatus();
+void updateOLEDboot(String value);
 
 void setup() {
     Serial.begin(115200);
@@ -56,11 +62,7 @@ void setup() {
         Serial.println(F("[FATAL] Alokasi SSD1306 gagal!"));
         for(;;); // Berhenti di sini
     }
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 0);
-    display.println("Booting ECG Device...");
+    updateOLEDboot("Booting ECG Device...");
     display.display();
      
     client.setInsecure(); 
@@ -77,13 +79,7 @@ void setup() {
         if (confirmed) {
             Serial.println("\n[RESET] Konfirmasi diterima. Menghapus semua kredensial Wi-Fi...");
             nvs_flash_erase();
-            display.clearDisplay();
-            display.setTextSize(1);
-            display.setTextColor(SSD1306_BLACK);
-            display.setCursor(0, 0);
-            display.println("Resetting ECG Device...");
-            display.display();
-            delay(1000);
+            updateOLEDboot("Resetting ECG Device...");
             ESP.restart();
         }
     }
@@ -145,7 +141,6 @@ void setup() {
         Serial.printf("[PROV] QR Payload: %s\n", provPayload.c_str());
 
         display.clearDisplay();
-        // 2. Gambar QR Code warna HITAM
         drawQRCode(provPayload, -1);
         display.display();
 
@@ -197,7 +192,7 @@ void loop() {
     if (!provisioningDone) {
         return; 
     }
-    if (!isQrCodeActive) { 
+    if (!isBleActive) { 
         if (millis() - lastDisplayUpdate > 50) {
             lastDisplayUpdate = millis();
             updateOLEDStatus(); 
@@ -211,7 +206,7 @@ void loop() {
         display.display(); // Kirim buffer ke layar
     }
     
-    if (isSensorActive && !isQrCodeActive) {
+    if (isSensorActive && !isBleActive) {
         if (millis() - lastSampleTime >= sampleInterval) {
             lastSampleTime = millis();
             bool signalValid = isSignalValid(LO_PLUS_PIN, LO_MINUS_PIN);
@@ -263,9 +258,9 @@ void loop() {
             }
         }
         
-        if (bufferIndex >= SIGNAL_LENGTH) {
+        if (bufferIndex >= SIGNAL_LENGTH && !isBleActive) {
             currentStatus = "Analyzing..."; // Update status sebelum ngirim
-            if (!isQrCodeActive) updateOLEDStatus();
+            updateOLEDStatus();
 
             String timestamp = getTimestamp();
             if (timestamp != "0000-00-00T00:00:00+07:00") { 
@@ -282,7 +277,7 @@ void loop() {
 
             plotX = 0;
             lastPlotY = -1;
-            if (!isQrCodeActive) display.fillRect(0, 0, SCREEN_WIDTH, PLOT_HEIGHT, SSD1306_BLACK);
+            display.fillRect(0, 0, SCREEN_WIDTH, PLOT_HEIGHT, SSD1306_BLACK);
             delay(1000);
         }
     }
@@ -292,9 +287,6 @@ void loop() {
     }
 }
 
-// [FILE: Edge.ino]
-
-// Hapus parameter warna, kita bikin standar OLED (Black on White) biar tajam
 void drawQRCode(String text, int startY) {
     // 1. Setup QR Code (Versi 3)
     uint8_t qrcodeData[qrcode_getBufferSize(3)];
@@ -344,6 +336,7 @@ void drawQRCode(String text, int startY) {
     }
 }
 
+
 void updateOLEDPlotter(float value) {
     // Mapping: Sesuaikan min/max ini dengan output sinyal filter lo
     // Ganti -500 dan 500 sesuai kebutuhan
@@ -368,6 +361,16 @@ void updateOLEDPlotter(float value) {
     }
 }
 
+void updateOLEDboot(String value) {
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 0);
+    display.println(value);
+    display.display();
+    delay(1500);
+}
+
 void updateOLEDStatus() {
     int statusBarY = PLOT_HEIGHT + 2; // Posisi Y di bawah plotter
     int statusBarHeight = 16;
@@ -382,4 +385,5 @@ void updateOLEDStatus() {
     
     display.print(statusText);
 }
+
 

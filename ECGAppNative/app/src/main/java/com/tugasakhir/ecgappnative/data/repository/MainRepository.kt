@@ -64,7 +64,7 @@ class MainRepository(
     suspend fun removeCorrelative(req: RemoveCorrelativeRequest) = handleApiCall { api.removeCorrelative(req) }
 
     // --- History (Cache Logic) ---
-    suspend fun getHistory(userId: Int): List<HistoryEntity> {
+    suspend fun getHistory(userId: String): List<HistoryEntity> {
         // 1. Coba ambil dari network
         try {
             val response = handleApiCall { api.getHistory(userId) }

@@ -5,9 +5,11 @@ import android.os.Bundle
 import android.view.View
 import android.widget.Toast
 import androidx.activity.viewModels
+import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
+import com.github.mikephil.charting.formatter.ValueFormatter
 import com.tugasakhir.ecgappnative.MainApplication
 import com.tugasakhir.ecgappnative.data.model.HistoryDetailResponse
 import com.tugasakhir.ecgappnative.databinding.ActivityHistoryDetailBinding
@@ -102,35 +104,45 @@ class HistoryDetailActivity : BaseActivity() {
         }
 
         // 2. Buat DataSet
-        val dataSet = LineDataSet(entries, "ECG Signal")
+        val dataSet = LineDataSet(entries, "ECG Signal").apply {
+            color = Color.RED
+            lineWidth = 1.5f
+            setDrawValues(false)
+            setDrawCircles(false)
+            setDrawCircleHole(false)
+            mode = LineDataSet.Mode.LINEAR
 
-        // 3. Styling DataSet (biar kayak ECG)
-        dataSet.color = Color.RED
-        dataSet.lineWidth = 1.5f
-        dataSet.setDrawValues(false) // Gak usah tampilin angka di tiap titik
-        dataSet.setDrawCircles(false) // Gak usah ada buletan
-        dataSet.setDrawCircleHole(false)
-        dataSet.mode = LineDataSet.Mode.LINEAR
+            // Biar mulus, ilangin highlight pas diklik (opsional)
+            isHighlightEnabled = false
+        }
 
         // 4. Masukin ke LineData
-        val lineData = LineData(dataSet)
-        binding.lineChart.data = lineData
-
-        // 5. Styling Chart-nya (biar bersih)
+        binding.lineChart.data = LineData(dataSet)
         binding.lineChart.description.isEnabled = false // Hapus deskripsi
         binding.lineChart.legend.isEnabled = false // Hapus legenda
 
-        // Styling Sumbu X (Waktu)
-        binding.lineChart.xAxis.isEnabled = false
+        binding.lineChart.xAxis.apply {
+            isEnabled = true // Hidupin lagi
+            position = XAxis.XAxisPosition.BOTTOM // Taro di bawah
+            setDrawGridLines(true) // Kasih grid biar gampang baca waktunya
+            gridColor = Color.LTGRAY // Grid abu-abu tipis
+            textColor = Color.DKGRAY
 
+            // Format angka jadi "1.5s"
+            valueFormatter = object : ValueFormatter() {
+                override fun getFormattedValue(value: Float): String {
+                    return String.format("%.1fs", value)
+                }
+            }
+        }
         // Styling Sumbu Y (Kiri & Kanan)
-        binding.lineChart.axisLeft.isEnabled = false
+        binding.lineChart.axisLeft.isEnabled = true
+        binding.lineChart.axisLeft.setDrawGridLines(false)
         binding.lineChart.axisRight.isEnabled = false
 
-        // Hapus grid
-        binding.lineChart.xAxis.setDrawGridLines(false)
-        binding.lineChart.axisLeft.setDrawGridLines(false)
-        binding.lineChart.axisRight.setDrawGridLines(false)
+        binding.lineChart.isDragEnabled = true
+        binding.lineChart.setScaleEnabled(true)
+        binding.lineChart.setPinchZoom(true)
 
         // Refresh grafiknya
         binding.lineChart.invalidate()

@@ -44,5 +44,9 @@ static const long INACTIVITY_TIMEOUT_MS = 60000; // 1 menit
 static const long MEDIUM_PRESS_DURATION_MS = 3000;
 static const long LONG_PRESS_DURATION_MS = 7000;
 
+#define SERVICE_UUID        BLEUUID((uint16_t)0x180A) // Standard Device Information Service
+#define CHAR_MAC_UUID       BLEUUID((uint16_t)0x2A23) // Standard System ID -> Kita isi MAC Address
+#define CHAR_DEVICE_ID_UUID BLEUUID((uint16_t)0x2A24) // Standard Model Number -> Kita isi Device ID "ECG_xxx"
+
 #endif
 

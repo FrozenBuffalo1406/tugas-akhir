@@ -67,37 +67,70 @@
 
     </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fabBlePair"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:clickable="false"
+        android:visibility="gone"
+        app:fabSize="mini"
+        android:src="@android:drawable/ic_menu_share"
+        app:tint="@color/white"
+        app:backgroundTint="@color/sage_500"
+        android:contentDescription="Pairing Device"
+        app:layout_constraintBottom_toTopOf="@+id/fabBle"
+        app:layout_constraintEnd_toEndOf="@+id/fabScan"
+        tools:visibility="visible" />
+
+    <TextView
+        android:id="@+id/labelFabBlePair"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Pairing Device"
+        android:padding="4dp"
+        android:background="@drawable/label_background"
+        android:textColor="@android:color/white"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/fabBlePair"
+        app:layout_constraintTop_toTopOf="@id/fabBlePair"
+        app:layout_constraintEnd_toStartOf="@id/fabBlePair"
+        android:layout_marginEnd="8dp"
+        tools:visibility="visible"/>
+
     <!-- FAB 3: Provisioning BLE (Baru) -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/fabBle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="16dp"
+        android:layout_marginBottom="15dp"
         android:clickable="false"
         android:contentDescription="@string/provisioning_wifi"
         android:src="@drawable/ic_bluetooth"
         android:visibility="gone"
+        app:backgroundTint="@color/sage_500"
         app:fabSize="mini"
         app:layout_constraintBottom_toTopOf="@+id/fabQr"
-        app:layout_constraintEnd_toEndOf="@+id/fabScan"
+        app:layout_constraintEnd_toEndOf="@+id/fabQr"
         app:tint="@color/white"
-        app:backgroundTint="@color/sage_500"
         tools:ignore="ClassNameCheck"
         tools:visibility="visible" />
+
     <TextView
         android:id="@+id/labelFabBle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="@string/provisioning_wifi"
-        android:padding="4dp"
+        android:layout_marginEnd="8dp"
+        android:layout_marginTop="8dp"
         android:background="@drawable/label_background"
+        android:padding="4dp"
+        android:text="@string/provisioning_wifi"
         android:textColor="@android:color/white"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="@id/fabBle"
-        app:layout_constraintTop_toTopOf="@id/fabBle"
         app:layout_constraintEnd_toStartOf="@id/fabBle"
-        android:layout_marginEnd="8dp"
-        tools:visibility="visible"/>
+        app:layout_constraintTop_toTopOf="@+id/fabBle"
+        tools:visibility="visible" />
 
 
     <!-- FAB 2: Scan QR (Lama, tapi jadi mini) -->
@@ -110,11 +143,11 @@
         android:contentDescription="@string/scan_qr_code"
         android:src="@drawable/ic_qr_code"
         android:visibility="gone"
-        app:fabSize="mini"
-        app:tint="@color/white"
         app:backgroundTint="@color/sage_500"
+        app:fabSize="mini"
         app:layout_constraintBottom_toTopOf="@+id/fabScan"
         app:layout_constraintEnd_toEndOf="@+id/fabScan"
+        app:tint="@color/white"
         tools:ignore="ClassNameCheck"
         tools:visibility="visible" />
     <TextView

@@ -21,7 +21,7 @@ import com.tugasakhir.ecgappnative.ui.history.detail.HistoryDetailActivity
 class HistoryActivity : BaseActivity() {
 
     private lateinit var binding: ActivityHistoryBinding
-    private var targetUserId: Int = -1
+    private var targetUserId: String = ""
 
     private lateinit var historyAdapter: HistoryAdapter
 
@@ -37,22 +37,31 @@ class HistoryActivity : BaseActivity() {
         setupObservers()
         setupListeners() // <-- Tambahin ini buat tombol back
 
-        targetUserId = intent.getIntExtra("USER_ID", -1)
+        targetUserId = intent.getStringExtra("USER_ID") ?: ""
 
         // ... (Logika loading history sama persis) ...
-        if (targetUserId == -1) {
+        if (targetUserId.isEmpty()) {
+            // Kalau kosong, berarti buka history diri sendiri -> Ambil dari Session
             lifecycleScope.launch {
-                targetUserId = SessionManager(this@HistoryActivity).userIdFlow.first()?.toIntOrNull() ?: -1
-                viewModel.loadHistory(targetUserId)
+                // Ambil langsung string-nya, gak perlu toIntOrNull() lagi
+                val myUserId = SessionManager(this@HistoryActivity).userIdFlow.first()
+
+                if (!myUserId.isNullOrEmpty()) {
+                    targetUserId = myUserId
+                    viewModel.loadHistory(targetUserId)
+                } else {
+                    Toast.makeText(this@HistoryActivity, "Gagal memuat User ID", Toast.LENGTH_SHORT).show()
+                    finish() // Tutup aja kalau gak ada ID
+                }
             }
         } else {
+            // Kalau ada kiriman dari Dashboard (misal liat kerabat)
             viewModel.loadHistory(targetUserId)
         }
     }
 
-    // Tambahin ini biar tombol back di header jalan (kalo ada)
     private fun setupListeners() {
-        // binding.ivBack.setOnClickListener { finish() } // Uncomment kalo ada tombol back
+        // binding.ivBack.setOnClickListener { finish() } //  tombol back
     }
 
     private fun setupRecyclerView() {

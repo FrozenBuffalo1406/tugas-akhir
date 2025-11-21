@@ -29,7 +29,7 @@ interface ApiService {
     suspend fun getDashboard(): Response<DashboardResponse>
 
     @GET("history")
-    suspend fun getHistory(@Query("userId") userId: Int): Response<HistoryResponse>
+    suspend fun getHistory(@Query("userId") userId: String): Response<HistoryResponse>
     @GET("reading/{id}")
     suspend fun getReadingDetail(
         @Path("id") readingId: Int
