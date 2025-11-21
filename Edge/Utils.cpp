@@ -27,7 +27,6 @@ extern bool mediumPressTriggered;
 extern bool buttonWasPressed;
 
 extern bool isBleActive;
-extern bool isQrCodeActive;
 
 extern String DEVICE_ID;
 extern float dcBlockerW;
@@ -37,8 +36,108 @@ extern WiFiClientSecure client;
 extern Adafruit_SSD1306 display;
 String currentStatus = "Initializing...";
 
-void drawQRCode(String text, int startY);
-void updateOLEDboot(String value)
+extern void updateOLEDboot(String value);
+
+void sensorSleep() {
+    if (isSensorActive) {
+        Serial.println("[POWER] Sensor dinonaktifkan untuk hemat daya.");
+        digitalWrite(SDN_PIN, LOW);
+        isSensorActive = false;
+        currentStatus = "Sleeping";
+    }
+}
+
+void sensorWakeUp() {
+    if (!isSensorActive) {
+        Serial.println("[POWER] Sensor diaktifkan.");
+        digitalWrite(SDN_PIN, HIGH);
+        isSensorActive = true;
+        beatFilter->reset();
+        notchFilter->reset();
+        dcBlockerW = 0.0;
+        dcBlockerX = 0.0; 
+        bufferIndex = 0;
+        lastActivityTime = millis();
+        currentStatus = "Waking up!";
+    }
+}
+
+void startBLEPairingService() {
+    Serial.println("[BLE] Memulai Mode Pairing...");
+
+    String tempMac = WiFi.macAddress();
+    
+    // Jaga-jaga kalo stringnya kosong (jarang terjadi, tapi safety first)
+    if (tempMac == "" || tempMac == "00:00:00:00:00:00") {
+        WiFi.mode(WIFI_STA); // Hidupin bentar
+        tempMac = WiFi.macAddress();
+    }
+    
+    // Matikan WiFi sementara biar stabil
+    WiFi.mode(WIFI_MODE_NULL);
+
+    // Nama Device Unik (ECG-XXXXXX)
+    String bleName = "ECG-" + String((uint32_t)ESP.getEfuseMac(), HEX); 
+    BLEDevice::init(bleName.c_str());
+    
+    BLEServer *pServer = BLEDevice::createServer();
+    BLEService *pService = pServer->createService(SERVICE_UUID);
+    
+    // Karakteristik 1: Device ID
+    BLECharacteristic *pCharID = pService->createCharacteristic(
+                                    CHAR_DEVICE_ID_UUID,
+                                    BLECharacteristic::PROPERTY_READ
+                                );
+    pCharID->setValue(DEVICE_ID.c_str());
+    
+    // Karakteristik 2: MAC Address
+    BLECharacteristic *pCharMAC = pService->createCharacteristic(
+                                    CHAR_MAC_UUID,
+                                    BLECharacteristic::PROPERTY_READ
+                                );
+    pCharMAC->setValue(tempMac.c_str());
+    
+    pService->start();
+    
+    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+    pAdvertising->addServiceUUID(SERVICE_UUID);
+    pAdvertising->setScanResponse(true);
+    pAdvertising->setMinPreferred(0x06);  
+    pAdvertising->setMinPreferred(0x12);
+    BLEDevice::startAdvertising();
+    
+    Serial.println("[BLE] Advertising started.");
+    
+    // Update Layar OLED
+    display.clearDisplay();
+    display.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, SSD1306_BLACK);
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    
+    display.setCursor(0, 10);
+    display.println(">> BLUETOOTH MODE <<");
+    display.setCursor(0, 30);
+    display.println("Nama: " + bleName);
+    display.setCursor(0, 50);
+    display.println("Ready to Pair...");
+    display.display();
+}
+
+void stopBLEPairingService() {
+    Serial.println("[BLE] Menghentikan BLE...");
+    BLEDevice::deinit(true); // Matikan stack BLE
+    isBleActive = false;
+    
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.setTextColor(SSD1306_WHITE);
+    display.println("BLE Stopped.");
+    display.println("Restarting WiFi...");
+    display.display();
+    
+    delay(1000);
+    ESP.restart(); // Restart adalah cara paling bersih balik ke WiFi
+}
 
 String getDeviceIdentity() {
 
@@ -74,27 +173,26 @@ bool isSignalValid(int loPlusPin, int loMinusPin) {
 }
 
 String getTimestamp() {
-    static bool timeInitialized = false;
     struct tm timeinfo;
-    
+    static bool configSent = false;
 
-    if (!timeInitialized) {
-        Serial.println("[NTP] Melakukan konfigurasi waktu (NTP) untuk pertama kali...");
-        configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
+    // 1. Config Time Cuma SEKALI, tapi pake 3 Server Backup
+    if (!configSent) {
+        Serial.println("[NTP] Mengkonfigurasi waktu dengan 3 server...");
+        // Prioritas: 1. Server Indo, 2. Server Global, 3. Server Google (Paling stabil)
+        configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, "id.pool.ntp.org", "pool.ntp.org", "time.google.com");
+        configSent = true;
+    }
+
+    if (!getLocalTime(&timeinfo, 5000)) { 
+        Serial.println("[TIME-ERROR] Gagal sync waktu (Timeout). Mencoba sekali lagi...");
         
-        if (getLocalTime(&timeinfo) && timeinfo.tm_year > 125) { // Cek apakah tahun > 2023
-             Serial.println("[NTP] Waktu berhasil disinkronisasi saat inisiasi!");
-        } else {
-            Serial.println("[NTP-WARNING] Sinkronisasi awal belum selesai, akan dicoba di background.");
+        // Retry mechanism: Coba lagi sekali lagi dng timeout 3 detik
+        if (!getLocalTime(&timeinfo, 3000)) {
+            Serial.println("[TIME-ERROR] Masih gagal. Pake waktu default.");
+            return "0000-00-00T00:00:00+07:00"; // Return default biar program gak crash
         }
-        timeInitialized = true;
     }
-    
-    if (!getLocalTime(&timeinfo)) {
-        Serial.println("[TIME-ERROR] Gagal mendapatkan waktu lokal (mungkin belum sinkron).");
-        return "0000-00-00T00:00:00+07:00";
-    }
-
     char timeString[30];
     strftime(timeString, sizeof(timeString), "%Y-%m-%dT%H:%M:%S+07:00", &timeinfo);
     return String(timeString);
@@ -167,32 +265,8 @@ void sendDataToServer(const char* url, const char* deviceId, const char* timesta
     
 }
 
-void sensorSleep() {
-    if (isSensorActive) {
-        Serial.println("[POWER] Sensor dinonaktifkan untuk hemat daya.");
-        digitalWrite(SDN_PIN, LOW);
-        isSensorActive = false;
-        currentStatus = "Sleeping";
-    }
-}
-
-void sensorWakeUp() {
-    if (!isSensorActive) {
-        Serial.println("[POWER] Sensor diaktifkan.");
-        digitalWrite(SDN_PIN, HIGH);
-        isSensorActive = true;
-        beatFilter->reset();
-        notchFilter->reset();
-        dcBlockerW = 0.0;
-        dcBlockerX = 0.0; 
-        bufferIndex = 0;
-        lastActivityTime = millis();
-        currentStatus = "Waking up!";
-    }
-}
-
 void handleMultiFunctionButton() {
-  // --- TOMBOL SEDANG DITEKAN (LOW) ---
+  // --- TOMBOL DITEKAN (LOW) ---
   if (digitalRead(FACTORY_RESET_PIN) == LOW) {
 
     if (buttonPressStartTime == 0) {
@@ -205,28 +279,26 @@ void handleMultiFunctionButton() {
 
     unsigned long pressDuration = millis() - buttonPressStartTime;
 
-    // --- [LOGIKA BARU] Tahan 3 Detik -> LANGSUNG AKTIFKAN QR ---
+    // --- Tahan 3 Detik -> BLE ---
     if (pressDuration > MEDIUM_PRESS_DURATION_MS && !mediumPressTriggered && !longPressTriggered) {
-        Serial.println("\n[BTN] Tahanan 3 detik tercapai. Mengaktifkan QR Code...");
-      
-      // Langsung eksekusi di sini (gak nunggu lepas)
-    //   showDeviceInfoQR(); 
-    //   isQrCodeActive = true; 
-        isBleActive = true;
-        startBLEPairingService()
-        currentStatus = "BLE Active";
-        mediumPressTriggered = true; // Kunci biar gak dieksekusi ulang
+        Serial.println("\n[BTN] Tahanan 3 detik. Aktifkan BLE.");
+        
+        if (!isBleActive) {
+            isBleActive = true;
+            currentStatus = "BLE Pairing";
+            startBLEPairingService();
+        }
+        mediumPressTriggered = true;
     }
 
-    // --- Cek Tahan 7 Detik (Long Press) -> RESET ---
+    // --- Tahan 7 Detik -> RESET ---
     if (!longPressTriggered && pressDuration > LONG_PRESS_DURATION_MS) {
-      Serial.println("\n[BTN] Tahanan 7 detik terdeteksi. Melakukan factory reset...");
+      Serial.println("\n[BTN] Tahanan 7 detik. Factory Reset.");
       
       nvs_flash_erase();
-      Serial.println("[RESET] Kredensial Wi-Fi dihapus. Perangkat akan restart.");
+      updateOLEDboot("RESETTING DEVICE...");
       
-      // Kasih feedback visual dikit sebelum mati
-      updateOLEDboot("RESETTING...");
+      delay(1000);
       ESP.restart();
       longPressTriggered = true;
     }
@@ -235,36 +307,25 @@ void handleMultiFunctionButton() {
   // --- TOMBOL DILEPAS (HIGH) ---
   else {
     if (buttonWasPressed) {
-      // Kita cek ini lepasnya gara-gara apa?
-      if (longPressTriggered) {} 
+      if (longPressTriggered) { } 
       else if (mediumPressTriggered) {
-        // Ini berarti user baru aja selesai nampilin QR Code (tahan 3 detik terus lepas).
-        // Jangan ngapa-ngapain, biarin QR-nya tetep tampil.
-        Serial.println("[BTN] Lepas tombol (Selesai aktifin QR).");
-        currentStatus = "BLE PAIR (r)"
-        display.clearDisplay();
+        // Tombol dilepas setelah BLE nyala. Biarin aja.
       } 
       else {
-        if (isQrCodeActive) {
-          // Kalo QR lagi nyala, klik ini buat BALIK NORMAL
-          Serial.println("[BTN] Klik cepat. Menutup QR Code...");
-          // Balikin layar ke mode normal (hitam)
-          display.clearDisplay();
-          display.fillRect(0, 0, SCREEN_WIDTH, PLOT_HEIGHT, SSD1306_BLACK);
-          
-          sensorWakeUp(); 
-          currentStatus = "Waking Up";
-
+        // --- KLIK CEPAT (SHORT PRESS) ---
+        if (isBleActive) {
+            // Kalo BLE nyala, klik buat matiin
+            Serial.println("[BTN] Klik: Matikan BLE.");
+            stopBLEPairingService();
         } else {
-          // Kalo QR lagi mati, klik ini buat WAKEUP SENSOR biasa
-          Serial.println("[BTN] Klik cepat. Sensor wakeup...");
-          sensorWakeUp();
-          currentStatus = "Waking Up";
+            // Kalo Normal, klik buat wakeup sensor
+            Serial.println("[BTN] Klik: Wakeup Sensor.");
+            sensorWakeUp();
+            currentStatus = "Waking Up";
         }
       }
     }
     
-    // Reset semua flag
     buttonPressStartTime = 0;
     buttonWasPressed = false;
     mediumPressTriggered = false; 
@@ -273,33 +334,5 @@ void handleMultiFunctionButton() {
 }
 
 
-
-void showDeviceInfoQR() {
-    Serial.println("[QR] Menampilkan Info Perangkat via QR Code...");
-    
-    String mac = WiFi.macAddress();
-    
-    JsonDocument doc;
-    doc["device_id"] = DEVICE_ID;
-    doc["mac_address"] = mac.c_str();
-    String payload;
-    serializeJson(doc, payload);
-
-    Serial.printf("[QR] Payload: %s\n", payload.c_str()); // Debug
-    
-    // --- HITUNG UKURAN ---
-    // Kita paksa visualisasi seolah-olah Version 3 (29 modul)
-    // Ditambah margin (quiet zone) misal 2 modul kiri-kanan-atas-bawah
-    // Total butuh: (29 + 4) * 2 pixel = 66 pixel. 
-    // Karena layar cuma 64px, margin kita tipisin jadi 1 modul atau 0 (QR mentok atas bawah)
-    
-    int moduleSize = 2;
-    int qrRawSize = 29 * moduleSize; // 58 pixel
-    int bgSize = 64; // Tinggi kotak background (full height layar)
-    int xBgOffset = (SCREEN_WIDTH - bgSize) / 2; // Posisi X kotak background biar tengah
-
-    drawQRCode(payload, -1);
-    display.display();
-}
 
 

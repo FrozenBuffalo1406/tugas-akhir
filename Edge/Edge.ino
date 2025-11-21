@@ -32,7 +32,6 @@ bool longPressTriggered = false;
 bool mediumPressTriggered = false;
 bool buttonWasPressed = false;
 
-bool isQrCodeActive = false;
 bool isBleActive = false;
 
 float dcBlockerW = 0.0;
