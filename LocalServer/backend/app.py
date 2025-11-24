@@ -100,6 +100,20 @@ def load_all_models():
             # Load pake joblib
             afib_classifier = joblib.load(AFIB_MODEL_PATH)
             app.logger.info(f"✅ Model AFib ('{AFIB_MODEL_FILENAME}') berhasil dimuat.")
+            try:
+                # 1. Cek Tipe Modelnya (RandomForest, SVM, dll)
+                model_type = type(afib_classifier).__name__
+                app.logger.info(f"   -> Model Type: {model_type}")
+
+                # 2. Cek Jumlah Fitur Input (n_features_in_)
+                if hasattr(afib_classifier, 'n_features_in_'):
+                    app.logger.info(f"   -> Input Features: {afib_classifier.n_features_in_}")
+                
+                # 3. Cek Kelas Output (classes_)
+                if hasattr(afib_classifier, 'classes_'):
+                    app.logger.info(f"   -> Output Classes: {afib_classifier.classes_}")
+            except Exception as info_error:
+                app.logger.warning(f"   -> Gagal baca detail model: {info_error}")
     except Exception as e:
         app.logger.error(f"❌ ERROR: Gagal memuat model AFib (Versi library beda?). Error: {e}", exc_info=True)
         afib_classifier = None
