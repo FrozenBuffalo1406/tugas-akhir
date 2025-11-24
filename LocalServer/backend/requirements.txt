@@ -9,5 +9,7 @@ scipy
 
 tensorflow-cpu==2.18.0  # <-- WAJIB SAMA KAYAK VERSI TRAINING
 numpy==1.26.4
+joblib==1.5.2
+scikit-learn==1.6.1
 
 python-dotenv

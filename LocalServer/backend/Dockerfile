@@ -31,6 +31,8 @@ RUN pip install --upgrade pip && pip install wheel
 RUN pip install numpy==1.26.4
 RUN pip install scipy
 # Tensorflow paling berat, install sendirian
+RUN pip install joblib==1.5.2
+RUN pip install scikit-learn==1.6.1
 RUN pip install tensorflow-cpu==2.18.0
 
 # 5. Install sisa library lainnya (Flask, dll)

@@ -62,6 +62,10 @@ MODEL_FILENAME = 'beat_classifier_model_SMOTE.tflite'
 MODEL_PATH = os.getenv('MODEL_PATH', os.path.join(basedir, f'model/{MODEL_FILENAME}'))
 BEAT_LABELS = ['Normal', 'PVC', 'Other'] 
 
+afib_classifier = None
+AFIB_MODEL_FILENAME = 'afib_classifier.pkl' # <-- Pastiin file ini ada di folder backend/model/
+AFIB_MODEL_PATH = os.getenv('AFIB_MODEL_PATH', os.path.join(basedir, f'model/{AFIB_MODEL_FILENAME}'))
+
 def load_all_models():
     """ Load model TFLite ke memori """
     global classification_interpreter, input_details, output_details
@@ -83,6 +87,22 @@ def load_all_models():
         
     except Exception as e:
         app.logger.critical(f"❌ FATAL ERROR: Gagal memuat model TFLite. Error: {e}", exc_info=True)
+    
+    app.logger.info(f"Mencoba memuat model AFib PKL dari: {AFIB_MODEL_PATH}")
+    try:
+        if not os.path.exists(AFIB_MODEL_PATH):
+            # Kalo file gak ada, jangan crash. Cukup kasih warning.
+            app.logger.warning(f"⚠️  PERINGATAN: File '{AFIB_MODEL_FILENAME}' tidak ditemukan.")
+            app.logger.warning(f"   Fitur deteksi AFib akan dinonaktifkan sementara.")
+            afib_classifier = None
+        else:
+            # Load pake joblib
+            afib_classifier = joblib.load(AFIB_MODEL_PATH)
+            app.logger.info(f"✅ Model AFib ('{AFIB_MODEL_FILENAME}') berhasil dimuat.")
+    except Exception as e:
+        app.logger.error(f"❌ ERROR: Gagal memuat model AFib (Versi library beda?). Error: {e}", exc_info=True)
+        afib_classifier = None
+
     app.logger.info("="*50)
 
 class User(db.Model):
@@ -388,6 +408,30 @@ def analyze_ecg():
         predicted_index = np.argmax(prediction_probabilities)
         arrhythmia_classes = BEAT_LABELS 
         prediction_result = arrhythmia_classes[predicted_index]
+
+        afib_result_str = "Unknown"
+        if afib_classifier:
+            try:
+                # Scikit-learn butuh input 2D (1, 1024). Input kita 3D (1, 1024, 1).
+                afib_input = processed_input.reshape(1, -1)
+                
+                # Prediksi
+                afib_pred = afib_classifier.predict(afib_input)
+                raw_afib = afib_pred[0] 
+                
+                # Mapping Label (Sesuaikan sama model lu: 1=AFib, 0=Normal)
+                if str(raw_afib) == "1": 
+                    afib_result_str = "Detected"
+                elif str(raw_afib) == "0":
+                    afib_result_str = "Negative"
+                else:
+                    afib_result_str = str(raw_afib)
+                
+                app.logger.info(f"Prediksi AFib: {afib_result_str}")
+            except Exception as e:
+                app.logger.error(f"Gagal inferensi AFib: {e}")
+                afib_result_str = "Error"
+
         heart_rate = calculate_heart_rate(processed_input.flatten()) 
         
         try:
@@ -406,10 +450,14 @@ def analyze_ecg():
             # Kalo gak ada, berarti default -> Masuk ke history owner
             final_user_id = device.user_id
             app.logger.info(f"Menyimpan data untuk OWNER: {final_user_id}")
+
+        final_prediction_text = f"{beat_result}"
+        if afib_result_str != "Unknown":
+            final_prediction_text += f" | AFib: {afib_result_str}"
         
         new_reading = ECGReading(
             timestamp=parsed_timestamp,
-            prediction=prediction_result,
+            prediction=final_prediction_text,
             heart_rate=heart_rate,
             processed_ecg_data=processed_input.flatten().tolist(), 
             device_id=device.id,
@@ -423,7 +471,8 @@ def analyze_ecg():
             "status": "success",
             "prediction": prediction_result,
             "heartRate": heart_rate,
-            "probabilities": prediction_probabilities.tolist()
+            "probabilities": prediction_probabilities.tolist(),
+            "afib_status": afib_result_str
         })
     except Exception as e:
         db.session.rollback()
