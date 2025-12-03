@@ -488,6 +488,7 @@ def analyze_ecg():
             try:
                 # Scikit-learn butuh input 2D (1, 1024). Input kita 3D (1, 1024, 1).
                 afib_features = extract_afib_features(processed_input.flatten())
+                app.logger.info(f"AFib Features: {afib_features}")
                 afib_pred = afib_classifier.predict(afib_features)
                 raw_afib = afib_pred[0]
                
