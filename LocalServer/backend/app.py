@@ -559,9 +559,9 @@ def get_dashboard():
             "user_id": user.id,
             "user_email": user.email,
             "device_name": device.device_name,
-            "heartRate": latest_reading.heart_rate if latest_reading else "-",
+            "heartRate": latest_reading.heart_rate if latest_reading else 0,
             "prediction": latest_reading.prediction if latest_reading else "Belum ada data",
-            "timestamp": latest_reading.timestamp.isoformat() + "Z" if latest_reading else "-"
+            "timestamp": latest_reading.timestamp.isoformat() + "Z" if latest_reading else None
         })
 
     monitoring_list = user.monitoring.all()
@@ -576,9 +576,9 @@ def get_dashboard():
                 "user_id": patient.id,
                 "user_email": patient.email,
                 "device_name": device.device_name,
-                "heartRate": latest_reading.heart_rate if latest_reading else "-",
+                "heartRate": latest_reading.heart_rate if latest_reading else 0,
                 "prediction": latest_reading.prediction if latest_reading else "Belum ada data",
-                "timestamp": latest_reading.timestamp.isoformat() + "Z" if latest_reading else "-"
+                "timestamp": latest_reading.timestamp.isoformat() + "Z" if latest_reading else None
             })
             
     return jsonify({"data": response_data})
