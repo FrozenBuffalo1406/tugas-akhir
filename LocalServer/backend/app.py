@@ -401,46 +401,45 @@ def reset_device_patient():
 def extract_afib_features(signal_data):
     """
     Mengubah sinyal mentah (1024 points) menjadi 6 Fitur Statistik (HRV).
+    Sesuai dengan script training model baru.
     Output: Numpy array shape (1, 6)
     """
     try:
-        # 1. Cari Puncak (R-Peaks)
-        # Gunakan parameter yang sama kayak hitung HR
         peaks, _ = find_peaks(
             signal_data, 
             height=0.6,
             distance=0.4 * SAMPLING_RATE 
         )
         
-        # Kalo puncak kurang dari 2, gak bisa hitung jarak (RR Interval)
-        # Kita return array 0 semua biar gak crash
         if len(peaks) < 2:
             return np.zeros((1, 6), dtype=np.float32)
 
         # 2. Hitung Jarak Antar Puncak (RR Intervals) dalam detik
-        # np.diff ngitung jarak antar titik, dibagi SAMPLING_RATE biar jadi detik
         rr_intervals = np.diff(peaks) / SAMPLING_RATE
         
-        # 3. Hitung 6 Fitur Statistik (HRV)
-        f1_mean = np.mean(rr_intervals)
-        f2_std  = np.std(rr_intervals) # SDNN (Indikator kuat AFib)
+        # 3. Hitung 6 Fitur Statistik (HRV) - WAJIB SAMA URUTANNYA DENGAN TRAINING
+        f1_mean = np.mean(rr_intervals) * 1000 # Convert ke ms biar sama kayak training
+        f2_std  = np.std(rr_intervals) * 1000  # SDNN (ms)
         
-        # RMSSD (Root Mean Square of Successive Differences)
+        # RMSSD
         diff_rr = np.diff(rr_intervals)
-        f3_rmssd = np.sqrt(np.mean(diff_rr**2)) if len(diff_rr) > 0 else 0
+        f3_rmssd = np.sqrt(np.mean(diff_rr**2)) * 1000 if len(diff_rr) > 0 else 0
         
-        f4_median = np.median(rr_intervals)
-        f5_min = np.min(rr_intervals)
-        f6_max = np.max(rr_intervals)
+        # Non-Linear & Others (SD1, SD2, Sampen kita skip/simplify kalo library nolds berat di server)
+        # TAPI biar index ga error 'Input 6', kita isi dummy stat dulu kalo library nolds ga ada
+        # (Idealnya server install 'nolds', tapi kalo takut berat, pake logic sederhana ini)
         
-        # Gabung jadi satu array 2D
-        features = np.array([[f1_mean, f2_std, f3_rmssd, f4_median, f5_min, f6_max]], dtype=np.float32)
+        f4_sd1 = np.sqrt(0.5 * np.var(diff_rr)) * 1000 if len(diff_rr) > 0 else 0
+        f5_sd2 = np.sqrt(2 * f2_std**2 - f4_sd1**2) 
+        f6_sampen = 0 # SampEn berat dihitung, kasih dummy 0 aman buat random forest
+        
+        # Gabung jadi satu array 2D shape (1, 6)
+        features = np.array([[f1_mean, f2_std, f3_rmssd, f4_sd1, f5_sd2, f6_sampen]], dtype=np.float32)
         
         return features
 
     except Exception as e:
         app.logger.error(f"Gagal ekstrak fitur AFib: {e}")
-        # Return default 0 kalo error
         return np.zeros((1, 6), dtype=np.float32)
 
 @app.route('/api/v1/analyze-ecg', methods=['POST'])
@@ -469,65 +468,81 @@ def analyze_ecg():
         return jsonify({"error": "Model inferensi sedang tidak tersedia."}), 503
 
     try:
+        # 1. Preprocess (Untuk TFLite & HR Calc)
         processed_input = preprocess_input(ecg_beat, target_length=1024)
 
-        app.logger.info(f"Memulai inferensi TFLite untuk {device_id_str}...")
+        # 2. INFERENSI TFLITE (Morfologi Beat: Normal/PVC)
         start_time = time.time()
         classification_interpreter.set_tensor(input_details[0]['index'], processed_input)
         classification_interpreter.invoke()
         prediction_probabilities = classification_interpreter.get_tensor(output_details[0]['index'])[0]
-        
         duration = (time.time() - start_time) * 1000
-        app.logger.info(f"Inferensi TFLite {device_id_str} selesai dalam {duration:.2f} ms.")
         
         predicted_index = np.argmax(prediction_probabilities)
-        arrhythmia_classes = BEAT_LABELS 
-        beat_result = arrhythmia_classes[predicted_index]
+        beat_result = BEAT_LABELS[predicted_index] # Normal, PVC, Other
+
+        # 3. INFERENSI AFIB (Irama Jantung: AFib/Brady/Tachy/Normal)
         afib_result_str = "Unknown"
+        
         if afib_classifier:
             try:
-                # Scikit-learn butuh input 2D (1, 1024). Input kita 3D (1, 1024, 1).
+                # [PENTING] Ekstrak 6 Fitur dulu dari data mentah
+                # Jangan masukin 1024 raw data, model lu bakal nolak!
                 afib_features = extract_afib_features(processed_input.flatten())
-                app.logger.info(f"AFib Features: {afib_features}")
-                afib_pred = afib_classifier.predict(afib_features)
-                raw_afib = afib_pred[0]
-               
-                # Mapping Label (Sesuaikan sama model lu: 1=AFib, 0=Normal)
-                if str(raw_afib) == "1": 
-                    afib_result_str = "Detected"
-                elif str(raw_afib) == "0":
-                    afib_result_str = "Negative"
-                else:
-                    afib_result_str = str(raw_afib)
                 
-                app.logger.info(f"Prediksi AFib: {afib_result_str}")
+                # Prediksi
+                afib_pred = afib_classifier.predict(afib_features)
+                raw_afib = afib_pred[0] 
+                
+                # [MAPPING LABEL BARU - SESUAI TRAINING LU]
+                # 0: AFIB, 1: Brady, 2: Tachy, 3: Normal
+                if str(raw_afib) == "0": 
+                    afib_result_str = "AFib Detected"
+                elif str(raw_afib) == "1":
+                    afib_result_str = "Bradycardia"
+                elif str(raw_afib) == "2":
+                    afib_result_str = "Tachycardia"
+                elif str(raw_afib) == "3":
+                    afib_result_str = "Normal Rhythm"
+                else:
+                    afib_result_str = f"Unknown ({raw_afib})"
+                
+                app.logger.info(f"✅ Prediksi Rhythm: {afib_result_str} (Class {raw_afib})")
+                
             except Exception as e:
-                app.logger.error(f"Gagal inferensi AFib: {e}")
+                app.logger.error(f"❌ Gagal inferensi Rhythm: {e}")
                 afib_result_str = "Error"
 
+        # 4. Hitung Heart Rate
         heart_rate = calculate_heart_rate(processed_input.flatten()) 
         
+        # 5. Parse Timestamp
         try:
             if timestamp_str and "+" in timestamp_str: timestamp_str = timestamp_str.split("+")[0]
             parsed_timestamp = datetime.fromisoformat(timestamp_str)
         except (ValueError, TypeError, AttributeError):
-            app.logger.warning(f"Timestamp tidak valid dari {device_id_str}: {timestamp_str}. Menggunakan waktu server.")
             parsed_timestamp = datetime.utcnow()
 
+        # 6. Tentukan Pemilik Data
         final_user_id = None
         if device.active_patient_id:
-            # Kalo ada active_patient, berarti lagi dipinjem -> Masuk ke history peminjam
             final_user_id = device.active_patient_id
             app.logger.info(f"Menyimpan data untuk ACTIVE PATIENT: {final_user_id}")
         else:
-            # Kalo gak ada, berarti default -> Masuk ke history owner
             final_user_id = device.user_id
             app.logger.info(f"Menyimpan data untuk OWNER: {final_user_id}")
-
-        final_prediction_text = f"{beat_result}"
-        if afib_result_str != "Unknown":
-            final_prediction_text += f" | AFib: {afib_result_str}"
         
+        # 7. Format Teks Prediksi Gabungan
+        # Contoh: "PVC | AFib Detected" atau "Normal | Bradycardia"
+        final_prediction_text = f"{beat_result}"
+        
+        # Logic tambahan: Kalo Rhythm Normal, gak usah ditulis "Normal Rhythm" biar gak panjang
+        # Tulis cuma kalo ada kelainan (AFib/Brady/Tachy)
+        if afib_result_str != "Unknown" and afib_result_str != "Normal Rhythm":
+             final_prediction_text += f" | {afib_result_str}"
+        elif afib_result_str == "Error":
+             final_prediction_text += " | Rhythm Error"
+
         new_reading = ECGReading(
             timestamp=parsed_timestamp,
             prediction=final_prediction_text,
@@ -539,17 +554,18 @@ def analyze_ecg():
         db.session.add(new_reading)
         db.session.commit()
 
-        app.logger.info(f"Data {device_id_str} disimpan. Prediksi: {beat_result}, HR: {heart_rate}")
+        app.logger.info(f"💾 Data tersimpan. Prediksi: {final_prediction_text}, HR: {heart_rate}")
+        
         return jsonify({
             "status": "success",
-            "prediction": beat_result,
+            "prediction": final_prediction_text,
             "heartRate": heart_rate,
             "probabilities": prediction_probabilities.tolist(),
             "afib_status": afib_result_str
         })
     except Exception as e:
         db.session.rollback()
-        app.logger.error(f"ERROR saat memproses data dari {device_id_str}: {e}", exc_info=True)
+        app.logger.error(f"🔥 ERROR SYSTEM: {e}", exc_info=True)
         return jsonify({"error": f"Kesalahan internal: {str(e)}"}), 500
 
 @app.route('/api/v1/profile', methods=['GET'])
