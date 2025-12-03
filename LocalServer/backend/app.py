@@ -437,8 +437,7 @@ def analyze_ecg():
         
         predicted_index = np.argmax(prediction_probabilities)
         arrhythmia_classes = BEAT_LABELS 
-        prediction_result = arrhythmia_classes[predicted_index]
-
+        beat_result = arrhythmia_classes[predicted_index]
         afib_result_str = "Unknown"
         if afib_classifier:
             try:
@@ -496,10 +495,10 @@ def analyze_ecg():
         db.session.add(new_reading)
         db.session.commit()
 
-        app.logger.info(f"Data {device_id_str} disimpan. Prediksi: {prediction_result}, HR: {heart_rate}")
+        app.logger.info(f"Data {device_id_str} disimpan. Prediksi: {beat_result}, HR: {heart_rate}")
         return jsonify({
             "status": "success",
-            "prediction": prediction_result,
+            "prediction": beat_result,
             "heartRate": heart_rate,
             "probabilities": prediction_probabilities.tolist(),
             "afib_status": afib_result_str
