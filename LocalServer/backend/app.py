@@ -398,6 +398,51 @@ def reset_device_patient():
     
     return jsonify({"message": "Mode alat kembali ke Pemilik (Owner)."}), 200
 
+def extract_afib_features(signal_data):
+    """
+    Mengubah sinyal mentah (1024 points) menjadi 6 Fitur Statistik (HRV).
+    Output: Numpy array shape (1, 6)
+    """
+    try:
+        # 1. Cari Puncak (R-Peaks)
+        # Gunakan parameter yang sama kayak hitung HR
+        peaks, _ = find_peaks(
+            signal_data, 
+            height=0.6,
+            distance=0.4 * SAMPLING_RATE 
+        )
+        
+        # Kalo puncak kurang dari 2, gak bisa hitung jarak (RR Interval)
+        # Kita return array 0 semua biar gak crash
+        if len(peaks) < 2:
+            return np.zeros((1, 6), dtype=np.float32)
+
+        # 2. Hitung Jarak Antar Puncak (RR Intervals) dalam detik
+        # np.diff ngitung jarak antar titik, dibagi SAMPLING_RATE biar jadi detik
+        rr_intervals = np.diff(peaks) / SAMPLING_RATE
+        
+        # 3. Hitung 6 Fitur Statistik (HRV)
+        f1_mean = np.mean(rr_intervals)
+        f2_std  = np.std(rr_intervals) # SDNN (Indikator kuat AFib)
+        
+        # RMSSD (Root Mean Square of Successive Differences)
+        diff_rr = np.diff(rr_intervals)
+        f3_rmssd = np.sqrt(np.mean(diff_rr**2)) if len(diff_rr) > 0 else 0
+        
+        f4_median = np.median(rr_intervals)
+        f5_min = np.min(rr_intervals)
+        f6_max = np.max(rr_intervals)
+        
+        # Gabung jadi satu array 2D
+        features = np.array([[f1_mean, f2_std, f3_rmssd, f4_median, f5_min, f6_max]], dtype=np.float32)
+        
+        return features
+
+    except Exception as e:
+        app.logger.error(f"Gagal ekstrak fitur AFib: {e}")
+        # Return default 0 kalo error
+        return np.zeros((1, 6), dtype=np.float32)
+
 @app.route('/api/v1/analyze-ecg', methods=['POST'])
 def analyze_ecg():
     data = request.get_json()
@@ -442,12 +487,10 @@ def analyze_ecg():
         if afib_classifier:
             try:
                 # Scikit-learn butuh input 2D (1, 1024). Input kita 3D (1, 1024, 1).
-                afib_input = processed_input.reshape(1, -1)
-                
-                # Prediksi
-                afib_pred = afib_classifier.predict(afib_input)
-                raw_afib = afib_pred[0] 
-                
+                afib_features = extract_afib_features(processed_input.flatten())
+                afib_pred = afib_classifier.predict(afib_features)
+                raw_afib = afib_pred[0]
+               
                 # Mapping Label (Sesuaikan sama model lu: 1=AFib, 0=Normal)
                 if str(raw_afib) == "1": 
                     afib_result_str = "Detected"
