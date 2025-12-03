@@ -5,6 +5,7 @@ import time
 import numpy as np
 import uuid
 import joblib
+import random
 
 from logging.handlers import RotatingFileHandler
 from datetime import datetime, timedelta
@@ -125,8 +126,7 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     name = db.Column(db.String(100), nullable=True) 
     password_hash = db.Column(db.String(128), nullable=False)
-    devices = db.relationship('Device', backref='owner', lazy=True, foreign_keys='Device.user_id')
-    
+    devices = db.relationship('Device', foreign_keys='Device.user_id', back_populates='owner', lazy=True)
     monitoring = db.relationship(
         'MonitoringRelationship',
         foreign_keys='MonitoringRelationship.monitor_id',
@@ -141,22 +141,23 @@ class User(db.Model):
     )
 
 class Device(db.Model):
-    id = db.Column(db.String(80), primary_key=True)
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     mac_address = db.Column(db.String(17), unique=True, nullable=False)
     device_id_str = db.Column(db.String(80), unique=True, nullable=False)
     device_name = db.Column(db.String(100), nullable=True, default="My ECG Device")
     active_patient_id = db.Column(db.String(36), db.ForeignKey('user.id'), nullable=True)
     user_id = db.Column(db.String(36), db.ForeignKey('user.id'), nullable=True) 
+    owner = db.relationship('User', foreign_keys=[user_id], back_populates='devices')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     readings = db.relationship('ECGReading', backref='device', lazy=True, cascade="all, delete-orphan")
 
 class ECGReading(db.Model):
-    id = db.Column(db.String(80), primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)
     timestamp = db.Column(db.DateTime, nullable=False)
     prediction = db.Column(db.String(50), nullable=False)
     heart_rate = db.Column(db.Float, nullable=True)
     processed_ecg_data = db.Column(db.JSON, nullable=False) 
-    device_id = db.Column(db.String(80), db.ForeignKey('device.id'), nullable=False)
+    device_id = db.Column(db.String(36), db.ForeignKey('device.id'), nullable=False)
     user_id = db.Column(db.String(36), db.ForeignKey('user.id'), nullable=True)
 
 class MonitoringRelationship(db.Model):
@@ -296,14 +297,28 @@ def register_device():
     if device:
         app.logger.info(f"Device {mac} sudah terdaftar. Mengembalikan ID: {device.device_id_str}")
         return jsonify({"device_id": device.device_id_str}), 200
-    else:
-        count = Device.query.count()
-        new_device_id = f"ECG_DEV_{count + 1:03d}"
-        new_device = Device(mac_address=mac, device_id_str=new_device_id, user_id=None)
+    mac_clean = mac.replace(":", "").replace("-", "").upper()
+    suffix = mac_clean[-4:] if len(mac_clean) >= 4 else mac_clean
+    new_device_id_str = f"ECG-{suffix}"
+    while Device.query.filter_by(device_id_str=new_device_id_str).first():
+        rand_suffix = random.randint(10, 99)
+        new_device_id_str = f"ECG-{suffix}-{rand_suffix}"
+    
+    # Bikin device baru (ID primary key bakal otomatis keisi UUID dari model)
+    new_device = Device(
+        mac_address=mac, 
+        device_id_str=new_device_id_str, 
+        user_id=None
+    )
+    try:
         db.session.add(new_device)
         db.session.commit()
-        app.logger.info(f"Device baru {mac} didaftarkan dengan ID {new_device_id} (tanpa pemilik).")
-        return jsonify({"device_id": new_device_id}), 201
+        app.logger.info(f"Device baru {mac} didaftarkan dengan ID {new_device_id_str}.")
+        return jsonify({"device_id": new_device_id_str}), 201
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Gagal register device: {e}")
+        return jsonify({"error": "Gagal mendaftarkan device"}), 500
 
 
 @app.route('/api/v1/claim-device', methods=['POST'])
