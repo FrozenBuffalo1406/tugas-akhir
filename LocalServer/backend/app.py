@@ -64,12 +64,12 @@ MODEL_PATH = os.getenv('MODEL_PATH', os.path.join(basedir, f'model/{MODEL_FILENA
 BEAT_LABELS = ['Normal', 'PVC', 'Other'] 
 
 afib_classifier = None
-AFIB_MODEL_FILENAME = 'afib_classifier.pkl' # <-- Pastiin file ini ada di folder backend/model/
+AFIB_MODEL_FILENAME = 'afib_classifier.pkl'
 AFIB_MODEL_PATH = os.getenv('AFIB_MODEL_PATH', os.path.join(basedir, f'model/{AFIB_MODEL_FILENAME}'))
 
 def load_all_models():
     """ Load model TFLite ke memori """
-    global classification_interpreter, input_details, output_details
+    global classification_interpreter, input_details, output_details, afib_classifier
     app.logger.info("="*50)
     app.logger.info(f"Mencoba memuat model TFLite dari: {MODEL_PATH}")
     try:
@@ -125,7 +125,7 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     name = db.Column(db.String(100), nullable=True) 
     password_hash = db.Column(db.String(128), nullable=False)
-    devices = db.relationship('Device', backref='owner', lazy=True)
+    devices = db.relationship('Device', backref='owner', lazy=True, foreign_keys='Device.user_id')
     
     monitoring = db.relationship(
         'MonitoringRelationship',
@@ -141,7 +141,7 @@ class User(db.Model):
     )
 
 class Device(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.String(80), primary_key=True)
     mac_address = db.Column(db.String(17), unique=True, nullable=False)
     device_id_str = db.Column(db.String(80), unique=True, nullable=False)
     device_name = db.Column(db.String(100), nullable=True, default="My ECG Device")
@@ -151,12 +151,12 @@ class Device(db.Model):
     readings = db.relationship('ECGReading', backref='device', lazy=True, cascade="all, delete-orphan")
 
 class ECGReading(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.String(80), primary_key=True)
     timestamp = db.Column(db.DateTime, nullable=False)
     prediction = db.Column(db.String(50), nullable=False)
     heart_rate = db.Column(db.Float, nullable=True)
     processed_ecg_data = db.Column(db.JSON, nullable=False) 
-    device_id = db.Column(db.Integer, db.ForeignKey('device.id'), nullable=False)
+    device_id = db.Column(db.String(80), db.ForeignKey('device.id'), nullable=False)
     user_id = db.Column(db.String(36), db.ForeignKey('user.id'), nullable=True)
 
 class MonitoringRelationship(db.Model):
@@ -573,7 +573,6 @@ def get_history():
     
     user_id_to_check = request.args.get('userId')
     if not user_id_to_check: return jsonify({"error": "Parameter 'userId' dibutuhkan"}), 400
-    user_id_to_check = user_id_to_check
     user_to_check = User.query.get(user_id_to_check)
     if not user_to_check: return jsonify({"error": "User yang diminta tidak ditemukan"}), 404
 
@@ -726,10 +725,7 @@ def remove_correlative():
         ).first()
         action_type = "berhenti memantau"
 
-    elif 'monitor_id' in data:
-        try: monitor_id_to_remove = data['monitor_id']
-        except ValueError: return jsonify({"error": "monitor_id tidak valid"}), 400
-            
+    elif 'monitor_id' in data:    
         relationship_to_remove = MonitoringRelationship.query.filter_by(
             monitor_id=monitor_id_to_remove, 
             patient_id=current_user_id
