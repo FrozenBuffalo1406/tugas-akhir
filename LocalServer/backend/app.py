@@ -547,19 +547,22 @@ def get_dashboard():
 
     response_data = []
 
+    # 1. AMBIL DEVICE SENDIRI
     my_devices = user.devices
     for device in my_devices:
+        # Ambil data terakhir (bisa None kalo device baru)
         latest_reading = ECGReading.query.filter_by(device_id=device.id).order_by(ECGReading.timestamp.desc()).first()
-        if latest_reading:
-            response_data.append({
-                "type": "self",
-                "user_id": user.id,
-                "user_email": user.email,
-                "device_name": device.device_name,
-                "heartRate": latest_reading.heart_rate,
-                "prediction": latest_reading.prediction,
-                "timestamp": latest_reading.timestamp.isoformat() + "Z"
-            })
+        
+        # [FIX] Tetep masukin ke list walau data kosong
+        response_data.append({
+            "type": "self",
+            "user_id": user.id,
+            "user_email": user.email,
+            "device_name": device.device_name,
+            "heartRate": latest_reading.heart_rate if latest_reading else "-",
+            "prediction": latest_reading.prediction if latest_reading else "Belum ada data",
+            "timestamp": latest_reading.timestamp.isoformat() + "Z" if latest_reading else "-"
+        })
 
     monitoring_list = user.monitoring.all()
     for relationship in monitoring_list:
@@ -567,18 +570,18 @@ def get_dashboard():
         patient_devices = patient.devices
         for device in patient_devices:
             latest_reading = ECGReading.query.filter_by(device_id=device.id).order_by(ECGReading.timestamp.desc()).first()
-            if latest_reading:
-                response_data.append({
-                    "type": "correlative",
-                    "user_id": patient.id,
-                    "user_email": patient.email,
-                    "device_name": device.device_name,
-                    "heartRate": latest_reading.heart_rate,
-                    "prediction": latest_reading.prediction,
-                    "timestamp": latest_reading.timestamp.isoformat() + "Z"
-                })
+            
+            response_data.append({
+                "type": "correlative",
+                "user_id": patient.id,
+                "user_email": patient.email,
+                "device_name": device.device_name,
+                "heartRate": latest_reading.heart_rate if latest_reading else "-",
+                "prediction": latest_reading.prediction if latest_reading else "Belum ada data",
+                "timestamp": latest_reading.timestamp.isoformat() + "Z" if latest_reading else "-"
+            })
+            
     return jsonify({"data": response_data})
-
 
 @app.route('/api/v1/history', methods=['GET'])
 @jwt_required()
