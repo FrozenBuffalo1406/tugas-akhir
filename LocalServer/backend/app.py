@@ -116,7 +116,7 @@ def load_all_models():
             except Exception as info_error:
                 app.logger.warning(f"   -> Gagal baca detail model: {info_error}")
     except Exception as e:
-        app.logger.error(f"❌ ERROR: Gagal memuat model AFib (Versi library beda?). Error: {e}", exc_info=True)
+        app.logger.error(f"❌ ERROR: Gagal memuat model AFib. Error: {e}", exc_info=True)
         afib_classifier = None
 
     app.logger.info("="*50)
