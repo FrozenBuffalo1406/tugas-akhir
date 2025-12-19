@@ -39,7 +39,7 @@ static const int NOTCH_FILTER_ORDER = 2;
 static const float b_notch[] = {0.96545, -1.0964, 0.96545};
 static const float a_notch[] = {1.0, -1.0964, 0.9309};
 
-// --- Konfigurasi Manajemen Daya ---
+// --- Konfigurasi Manajemen Daya ---d
 static const long INACTIVITY_TIMEOUT_MS = 60000; // 1 menit
 static const long MEDIUM_PRESS_DURATION_MS = 3000;
 static const long LONG_PRESS_DURATION_MS = 7000;

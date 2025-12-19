@@ -240,7 +240,7 @@ class BleProvisioningActivity : BaseActivity() {
 
                     override fun wifiConfigApplied() {
                         runOnUiThread {
-                            binding.tvProvisionStatus.text = "Status: ESP sedang mencoba connect WiFi..."
+                            binding.tvProvisionStatus.text = "Konfigurasi Wi-Fi dikirim. Menunggu koneksi..."
                         }
                     }
 

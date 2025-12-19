@@ -445,6 +445,8 @@ def extract_afib_features(signal_data):
 @app.route('/api/v1/analyze-ecg', methods=['POST'])
 def analyze_ecg():
     data = request.get_json()
+    
+    # --- 1. Validasi Input ---
     if not data or 'ecg_beat_data' not in data or 'device_id' not in data:
         return jsonify({"error": "Request body harus berisi 'ecg_beat_data' dan 'device_id'"}), 400
 
@@ -453,6 +455,7 @@ def analyze_ecg():
     timestamp_str = data.get('timestamp')
     app.logger.info(f"Menerima data dari device: {device_id_str} ({len(ecg_beat)} points).")
 
+    # --- 2. Cek Kualitas Sinyal (Flatline Check) ---
     flatline_count = 0
     for point in ecg_beat:
         if point <= 10 or point >= 4090: flatline_count += 1
@@ -460,41 +463,50 @@ def analyze_ecg():
         app.logger.warning(f"Data from {device_id_str} ditolak: Sinyal flatline.")
         return jsonify({"error": "Data EKG tidak valid (sinyal flatline/elektroda terlepas)"}), 400
 
+    # --- 3. Cek Device Terdaftar ---
     device = Device.query.filter_by(device_id_str=device_id_str).first()
     if not device: return jsonify({"error": f"Device ID '{device_id_str}' belum terdaftar."}), 404
 
+    # --- 4. Cek Model Ready ---
     if classification_interpreter is None:
         app.logger.error("Model TFLite (Beat) belum dimuat!")
         return jsonify({"error": "Model inferensi sedang tidak tersedia."}), 503
 
     try:
-        # 1. Preprocess (Untuk TFLite & HR Calc)
+        # --- 5. Preprocessing Data ---
+        # Standarisasi data menjadi mean=0, std=1, panjang=1024
         processed_input = preprocess_input(ecg_beat, target_length=1024)
 
-        # 2. INFERENSI TFLITE (Morfologi Beat: Normal/PVC)
+        # --- 6. INFERENSI TFLITE (Beat Morphology: Normal/PVC) ---
         start_time = time.time()
         classification_interpreter.set_tensor(input_details[0]['index'], processed_input)
         classification_interpreter.invoke()
+        
+        # Ambil probabilitas TFLite (Contoh: [0.9, 0.1, 0.0])
         prediction_probabilities = classification_interpreter.get_tensor(output_details[0]['index'])[0]
-        duration = (time.time() - start_time) * 1000
         
         predicted_index = np.argmax(prediction_probabilities)
-        beat_result = BEAT_LABELS[predicted_index] # Normal, PVC, Other
+        beat_result = BEAT_LABELS[predicted_index] # Label: Normal/PVC/Other
 
-        # 3. INFERENSI AFIB (Irama Jantung: AFib/Brady/Tachy/Normal)
+        # --- 7. INFERENSI AFIB / RHYTHM (Random Forest) ---
         afib_result_str = "Unknown"
+        afib_probs_list = [] # List kosong default biar aman
         
         if afib_classifier:
             try:
-                # [PENTING] Ekstrak 6 Fitur dulu dari data mentah
-                # Jangan masukin 1024 raw data, model lu bakal nolak!
+                # A. Ekstrak 6 Fitur HRV (Wajib dilakukan sebelum masuk model PKL)
+                # Input: Flatten array 1D
                 afib_features = extract_afib_features(processed_input.flatten())
                 
-                # Prediksi
+                # B. Prediksi Kelas (0, 1, 2, 3)
                 afib_pred = afib_classifier.predict(afib_features)
                 raw_afib = afib_pred[0] 
                 
-                # [MAPPING LABEL BARU - SESUAI TRAINING LU]
+                # C. Prediksi Probabilitas (Confidence)
+                # Output: List 4 angka float, misal: [0.05, 0.05, 0.0, 0.9]
+                afib_probs_list = afib_classifier.predict_proba(afib_features)[0].tolist()
+
+                # D. Mapping Label (Sesuai Training Baru)
                 # 0: AFIB, 1: Brady, 2: Tachy, 3: Normal
                 if str(raw_afib) == "0": 
                     afib_result_str = "AFib Detected"
@@ -512,18 +524,19 @@ def analyze_ecg():
             except Exception as e:
                 app.logger.error(f"❌ Gagal inferensi Rhythm: {e}")
                 afib_result_str = "Error"
+                afib_probs_list = [] # Kosongin kalo error
 
-        # 4. Hitung Heart Rate
+        # --- 8. Hitung Heart Rate (BPM) ---
         heart_rate = calculate_heart_rate(processed_input.flatten()) 
         
-        # 5. Parse Timestamp
+        # --- 9. Parse Timestamp ---
         try:
             if timestamp_str and "+" in timestamp_str: timestamp_str = timestamp_str.split("+")[0]
             parsed_timestamp = datetime.fromisoformat(timestamp_str)
         except (ValueError, TypeError, AttributeError):
             parsed_timestamp = datetime.utcnow()
 
-        # 6. Tentukan Pemilik Data
+        # --- 10. Tentukan Pemilik Data (Owner vs Patient) ---
         final_user_id = None
         if device.active_patient_id:
             final_user_id = device.active_patient_id
@@ -532,17 +545,17 @@ def analyze_ecg():
             final_user_id = device.user_id
             app.logger.info(f"Menyimpan data untuk OWNER: {final_user_id}")
         
-        # 7. Format Teks Prediksi Gabungan
-        # Contoh: "PVC | AFib Detected" atau "Normal | Bradycardia"
+        # --- 11. Format Teks Gabungan untuk DB ---
+        # Format: "PVC | AFib Detected"
         final_prediction_text = f"{beat_result}"
         
-        # Logic tambahan: Kalo Rhythm Normal, gak usah ditulis "Normal Rhythm" biar gak panjang
-        # Tulis cuma kalo ada kelainan (AFib/Brady/Tachy)
-        if afib_result_str != "Unknown" and afib_result_str != "Normal Rhythm":
+        # Hanya tambahkan status Rhythm jika BUKAN Normal dan BUKAN Unknown
+        if afib_result_str not in ["Unknown", "Normal Rhythm", "Error"]:
              final_prediction_text += f" | {afib_result_str}"
         elif afib_result_str == "Error":
              final_prediction_text += " | Rhythm Error"
 
+        # --- 12. Simpan ke Database ---
         new_reading = ECGReading(
             timestamp=parsed_timestamp,
             prediction=final_prediction_text,
@@ -556,13 +569,19 @@ def analyze_ecg():
 
         app.logger.info(f"💾 Data tersimpan. Prediksi: {final_prediction_text}, HR: {heart_rate}")
         
+        # --- 13. Return JSON Response ---
         return jsonify({
             "status": "success",
             "prediction": final_prediction_text,
             "heartRate": heart_rate,
+            # Probabilitas TFLite (Beat)
             "probabilities": prediction_probabilities.tolist(),
+            # Probabilitas Random Forest (Rhythm) - [AFib, Brady, Tachy, Normal]
+            "afib_probabilities": afib_probs_list,
+            
             "afib_status": afib_result_str
         })
+
     except Exception as e:
         db.session.rollback()
         app.logger.error(f"🔥 ERROR SYSTEM: {e}", exc_info=True)
