@@ -6,6 +6,8 @@ import numpy as np
 import uuid
 import joblib
 import random
+import tensorflow as tf
+import pandas as pd
 
 from logging.handlers import RotatingFileHandler
 from datetime import datetime, timedelta
@@ -18,7 +20,6 @@ from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identi
 from scipy.signal import find_peaks
 from dotenv import load_dotenv
 
-import tensorflow as tf
 
 load_dotenv()
 
@@ -482,7 +483,7 @@ def analyze_ecg():
         classification_interpreter.set_tensor(input_details[0]['index'], processed_input)
         classification_interpreter.invoke()
         
-        # Ambil probabilitas TFLite (Contoh: [0.9, 0.1, 0.0])
+        # Ambil probabilitas TFLite
         prediction_probabilities = classification_interpreter.get_tensor(output_details[0]['index'])[0]
         
         predicted_index = np.argmax(prediction_probabilities)
@@ -490,21 +491,25 @@ def analyze_ecg():
 
         # --- 7. INFERENSI AFIB / RHYTHM (Random Forest) ---
         afib_result_str = "Unknown"
-        afib_probs_list = [] # List kosong default biar aman
+        afib_probs_list = [] 
         
         if afib_classifier:
             try:
-                # A. Ekstrak 6 Fitur HRV (Wajib dilakukan sebelum masuk model PKL)
+                # A. Ekstrak 6 Fitur HRV (Numpy Array)
                 # Input: Flatten array 1D
-                afib_features = extract_afib_features(processed_input.flatten())
+                afib_features_array = extract_afib_features(processed_input.flatten())
                 
-                # B. Prediksi Kelas (0, 1, 2, 3)
-                afib_pred = afib_classifier.predict(afib_features)
+                # [FIX WARNING] Ubah jadi DataFrame & Kasih Nama Kolom Sesuai Training
+                feature_names = ['mean_rr', 'sdnn', 'rmssd', 'sd1', 'sd2', 'sampen']
+                afib_features_df = pd.DataFrame(afib_features_array, columns=feature_names)
+                
+                # B. Prediksi Kelas
+                afib_pred = afib_classifier.predict(afib_features_df)
                 raw_afib = afib_pred[0] 
                 
                 # C. Prediksi Probabilitas (Confidence)
-                # Output: List 4 angka float, misal: [0.05, 0.05, 0.0, 0.9]
-                afib_probs_list = afib_classifier.predict_proba(afib_features)[0].tolist()
+                # Output: List 4 angka float
+                afib_probs_list = afib_classifier.predict_proba(afib_features_df)[0].tolist()
 
                 # D. Mapping Label (Sesuai Training Baru)
                 # 0: AFIB, 1: Brady, 2: Tachy, 3: Normal
@@ -524,7 +529,7 @@ def analyze_ecg():
             except Exception as e:
                 app.logger.error(f"❌ Gagal inferensi Rhythm: {e}")
                 afib_result_str = "Error"
-                afib_probs_list = [] # Kosongin kalo error
+                afib_probs_list = [] 
 
         # --- 8. Hitung Heart Rate (BPM) ---
         heart_rate = calculate_heart_rate(processed_input.flatten()) 
@@ -574,8 +579,10 @@ def analyze_ecg():
             "status": "success",
             "prediction": final_prediction_text,
             "heartRate": heart_rate,
+            
             # Probabilitas TFLite (Beat)
             "probabilities": prediction_probabilities.tolist(),
+            
             # Probabilitas Random Forest (Rhythm) - [AFib, Brady, Tachy, Normal]
             "afib_probabilities": afib_probs_list,
             
